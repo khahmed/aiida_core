@@ -180,7 +180,7 @@ class Process(plumpy.Process):
             killing = []
             for child in self.calc.called:
                 try:
-                    result = self.runner.rmq.kill_process(child.pk, 'Killed by parent<{}>'.format(self.calc.pk))
+                    result = self.runner.controller.kill_process(child.pk, 'Killed by parent<{}>'.format(self.calc.pk))
                     if isinstance(result, plumpy.Future):
                         killing.append(result)
                 except ConnectionClosed:
@@ -223,12 +223,11 @@ class Process(plumpy.Process):
         # Update the node attributes every time we enter a new state
 
     def on_entered(self, from_state):
-        super(Process, self).on_entered(from_state)
-        self._save_checkpoint()
         self.update_node_state(self._state)
-
+        self._save_checkpoint()
         # Update the latest process state change timestamp
         utils.set_process_state_change_timestamp(self)
+        super(Process, self).on_entered(from_state)
 
     @override
     def on_terminated(self):
@@ -751,7 +750,7 @@ class FunctionProcess(Process):
         self.calc.store_source_info(self._func)
 
     @override
-    def _run(self):
+    def run(self):
         args = []
 
         # Split the inputs into positional and keyword arguments
