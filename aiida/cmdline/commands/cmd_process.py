@@ -63,9 +63,12 @@ def process_list(all_entries, process_state, exit_status, failed, past_days, lim
 @decorators.only_if_daemon_running(echo.echo_warning, 'daemon is not running, so process may not be reachable')
 def process_kill(processes, timeout):
     """Kill running processes."""
-    from aiida.work import RemoteException, DeliveryFailed, CommunicationTimeout, new_blocking_control_panel
+    from aiida.work import RemoteException, DeliveryFailed, CommunicationTimeout, create_communicator, create_controller
 
-    with new_blocking_control_panel(timeout=timeout) as control_panel:
+    with create_communicator() as communicator:
+
+        controller = create_controller(communicator=communicator)
+
         for process in processes:
 
             if process.is_terminated:
@@ -73,7 +76,10 @@ def process_kill(processes, timeout):
                 continue
 
             try:
-                if control_panel.kill_process(process.pk, msg='Killed through `verdi process kill`'):
+                future = controller.kill_process(process.pk, msg='Killed through `verdi process kill`')
+                result = future.result(timeout=timeout)
+
+                if result:
                     echo.echo_success('killed Process<{}>'.format(process.pk))
                 else:
                     echo.echo_error('problem killing Process<{}>'.format(process.pk))
@@ -90,9 +96,12 @@ def process_kill(processes, timeout):
 @decorators.only_if_daemon_running(echo.echo_warning, 'daemon is not running, so process may not be reachable')
 def process_pause(processes, timeout):
     """Pause running processes."""
-    from aiida.work import RemoteException, DeliveryFailed, CommunicationTimeout, new_blocking_control_panel
+    from aiida.work import RemoteException, DeliveryFailed, CommunicationTimeout, create_communicator, create_controller
 
-    with new_blocking_control_panel(timeout=timeout) as control_panel:
+    with create_communicator() as communicator:
+
+        controller = create_controller(communicator=communicator)
+
         for process in processes:
 
             if process.is_terminated:
@@ -100,7 +109,10 @@ def process_pause(processes, timeout):
                 continue
 
             try:
-                if control_panel.pause_process(process.pk, msg='Paused through `verdi process pause`'):
+                future = controller.pause_process(process.pk, msg='Paused through `verdi process pause`')
+                result = future.result(timeout=timeout)
+
+                if result:
                     echo.echo_success('paused Process<{}>'.format(process.pk))
                 else:
                     echo.echo_error('problem pausing Process<{}>'.format(process.pk))
@@ -117,9 +129,12 @@ def process_pause(processes, timeout):
 @decorators.only_if_daemon_running(echo.echo_warning, 'daemon is not running, so process may not be reachable')
 def process_play(processes, timeout):
     """Play paused processes."""
-    from aiida.work import RemoteException, DeliveryFailed, CommunicationTimeout, new_blocking_control_panel
+    from aiida.work import RemoteException, DeliveryFailed, CommunicationTimeout, create_communicator, create_controller
 
-    with new_blocking_control_panel(timeout=timeout) as control_panel:
+    with create_communicator() as communicator:
+
+        controller = create_controller(communicator=communicator)
+
         for process in processes:
 
             if process.is_terminated:
@@ -127,7 +142,10 @@ def process_play(processes, timeout):
                 continue
 
             try:
-                if control_panel.play_process(process.pk):
+                future = controller.play_process(process.pk)
+                result = future.result(timeout=timeout)
+
+                if result:
                     echo.echo_success('played Process<{}>'.format(process.pk))
                 else:
                     echo.echo_critical('problem playing Process<{}>'.format(process.pk))
@@ -145,6 +163,7 @@ def process_watch(processes):
     """Watch the state transitions for a process."""
     from kiwipy import BroadcastFilter
     from aiida.work.rmq import create_communicator
+    import concurrent.futures
 
     def _print(body, sender, subject, correlation_id):
         echo.echo('pk={}, subject={}, body={}, correlation_id={}'.format(sender, subject, body, correlation_id))
@@ -160,11 +179,11 @@ def process_watch(processes):
         communicator.add_broadcast_subscriber(BroadcastFilter(_print, sender=process.pk))
 
     try:
-        communicator.await()
+        # Block this thread indefinitely
+        concurrent.futures.Future().result()
     except (SystemExit, KeyboardInterrupt):
-
         try:
-            communicator.disconnect()
+            communicator.stop()
         except RuntimeError:
             pass
 

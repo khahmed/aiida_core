@@ -19,7 +19,7 @@ from . import utils
 
 
 class Proc(work.Process):
-    def _run(self):
+    def run(self):
         pass
 
 
