@@ -11,8 +11,8 @@
 from __future__ import absolute_import
 import tornado.gen
 
-import kiwipy
 import plumpy
+import kiwipy
 
 __all__ = ['CalculationFuture']
 
