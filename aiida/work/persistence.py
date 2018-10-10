@@ -20,9 +20,10 @@
 from __future__ import absolute_import
 import logging
 import traceback
-import yaml
 
 import plumpy
+
+from aiida.utils import serialize
 
 __all__ = ['ObjectLoader', 'get_object_loader']
 
@@ -70,7 +71,7 @@ class AiiDAPersister(plumpy.Persister):
                 process, traceback.format_exc()))
         else:
             calc = process.calc
-            calc.set_checkpoint(yaml.dump(bundle))
+            calc.set_checkpoint(serialize.serialize(bundle))
 
         return bundle
 
@@ -95,7 +96,7 @@ class AiiDAPersister(plumpy.Persister):
         if checkpoint is None:
             raise plumpy.PersistenceError('Calculation<{}> does not have a saved checkpoint'.format(calculation.pk))
 
-        bundle = yaml.load(checkpoint)
+        bundle = serialize.deserialize(checkpoint)
         return bundle
 
     def get_checkpoints(self):
