@@ -110,7 +110,9 @@ class AiidaTestCase(unittest.TestCase):
         self.__backend_instance.tearDown_method()
         # Clean up the loop we created in set up.
         # Call this after the instance tear down just in case it uses the loop
-        ioloop.IOLoop.current().close()
+        loop = ioloop.IOLoop.current()
+        if not loop._closing:
+            loop.close()
 
     @classmethod
     def insert_data(cls):
