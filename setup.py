@@ -7,6 +7,10 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+
+from __future__ import print_function
+
+from __future__ import absolute_import
 import fastentrypoints
 import re
 import sys
@@ -27,7 +31,7 @@ if __name__ == '__main__':
     try:
         import pip
     except ImportError:
-        print 'Could not import pip, which is required for installation'
+        print('Could not import pip, which is required for installation')
         sys.exit(1)
 
     PIP_REQUIRED_VERSION = '10.0.0'
@@ -35,7 +39,7 @@ if __name__ == '__main__':
     installed_version = StrictVersion(pip.__version__)
 
     if installed_version < required_version:
-        print 'The installation requires pip>={}, whereas currently {} is installed'.format(required_version, installed_version)
+        print('The installation requires pip>={}, whereas currently {} is installed'.format(required_version, installed_version))
         sys.exit(1)
 
     bin_folder = path.join(aiida_folder, 'bin')
@@ -56,9 +60,10 @@ if __name__ == '__main__':
         extras_require=extras_require,
         packages=find_packages(),
         reentry_register=True,
+        reentry_scan=['aiida'],
         entry_points={
             'console_scripts': [
-                'verdi=aiida.cmdline.verdilib:run',
+                'verdi=aiida.cmdline.commands.cmd_verdi:verdi',
                 'verdi-plug = aiida.cmdline.verdi_plug:verdi_plug'
             ],
             # following are AiiDA plugin entry points:
@@ -70,6 +75,10 @@ if __name__ == '__main__':
                 'work = aiida.orm.calculation.work:WorkCalculation',
                 'simpleplugins.arithmetic.add = aiida.orm.calculation.job.simpleplugins.arithmetic.add:ArithmeticAddCalculation',
                 'simpleplugins.templatereplacer = aiida.orm.calculation.job.simpleplugins.templatereplacer:TemplatereplacerCalculation',
+            ],
+            'aiida.cmdline.computer.configure': [
+                'ssh = aiida.transport.plugins.ssh:CONFIGURE_SSH_CMD',
+                'local = aiida.transport.plugins.local:CONFIGURE_LOCAL_CMD',
             ],
             'aiida.code': [
                 'code = aiida.orm.code:Code'
@@ -135,5 +144,5 @@ if __name__ == '__main__':
             ]
         },
         scripts=['bin/runaiida'],
-        long_description=open(path.join(aiida_folder, 'README.rst')).read(),
+        long_description=open(path.join(aiida_folder, 'README.md')).read(),
     )

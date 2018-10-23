@@ -8,6 +8,7 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 
+from __future__ import absolute_import
 from aiida.backends.testbase import AiidaTestCase
 from aiida.common.caching import enable_caching
 from aiida.orm.calculation.inline import make_inline, InlineCalculation
@@ -40,16 +41,16 @@ class TestInlineCalculation(AiidaTestCase):
         self.assertEquals(calculation.is_finished_ok, True)
         self.assertEquals(calculation.is_failed, False)
 
-    def test_finish_status(self):
+    def test_exit_status(self):
         """
         If an InlineCalculation reaches the FINISHED process state, it has to have been successful
-        which means that the finish status always has to be 0
+        which means that the exit status always has to be 0
         """
         calculation, result = self.incr_inline(inp=Int(11))
         self.assertEquals(calculation.is_finished, True)
         self.assertEquals(calculation.is_finished_ok, True)
         self.assertEquals(calculation.is_failed, False)
-        self.assertEquals(calculation.finish_status, 0)
+        self.assertEquals(calculation.exit_status, 0)
 
     def test_incr(self):
         """

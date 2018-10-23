@@ -7,6 +7,7 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+from __future__ import absolute_import
 import datetime
 import unittest
 
@@ -68,17 +69,17 @@ class UniqueTest(unittest.TestCase):
         # Capture the sysout for the following code
         with Capturing():
             # Check the yes
-            utils.raw_input = lambda _: "y"
+            utils.input = lambda _: "y"
             self.assertTrue(utils.query_yes_no("", "yes"))
 
-            utils.raw_input = lambda _: "yes"
+            utils.input = lambda _: "yes"
             self.assertTrue(utils.query_yes_no("", "yes"))
 
             # Check the no
-            utils.raw_input = lambda _: "no"
+            utils.input = lambda _: "no"
             self.assertFalse(utils.query_yes_no("", "yes"))
 
-            utils.raw_input = lambda _: "n"
+            utils.input = lambda _: "n"
             self.assertFalse(utils.query_yes_no("", "yes"))
 
             # Check the empty default value that should
@@ -91,16 +92,16 @@ class UniqueTest(unittest.TestCase):
             # it is answered properly
             self.seq = -1
             answers = ["", "", "", "yes"]
-            utils.raw_input = lambda _: answers[self.array_counter()]
+            utils.input = lambda _: answers[self.array_counter()]
             self.assertTrue(utils.query_yes_no("", None))
             self.assertEqual(self.seq, len(answers) - 1)
 
             # Check that the default answer is returned
             # when the user doesn't give an answer
-            utils.raw_input = lambda _: ""
+            utils.input = lambda _: ""
             self.assertTrue(utils.query_yes_no("", "yes"))
 
-            utils.raw_input = lambda _: ""
+            utils.input = lambda _: ""
             self.assertFalse(utils.query_yes_no("", "no"))
 
     def test_query_string(self):
@@ -109,17 +110,17 @@ class UniqueTest(unittest.TestCase):
         """
         # None should be returned when empty answer and empty default
         # answer is given
-        utils.raw_input = lambda _: ""
+        utils.input = lambda _: ""
         self.assertIsNone(utils.query_string("", ""))
 
         # If no answer is given then the default answer should be returned
-        utils.raw_input = lambda _: ""
+        utils.input = lambda _: ""
         self.assertEqual(
             utils.query_string("", "Def_answer"), "Def_answer")
 
         # The answer should be returned when the an answer is given by
         # the user
-        utils.raw_input = lambda _: "Usr_answer"
+        utils.input = lambda _: "Usr_answer"
         self.assertEqual(
             utils.query_string("", "Def_answer"), "Usr_answer")
 
@@ -139,19 +140,108 @@ class UniqueTest(unittest.TestCase):
             # - the final expected answer
             self.seq = -1
             answers = ["", "3fd43", "1", "yes"]
-            utils.raw_input = lambda _: answers[self.array_counter()]
+            utils.input = lambda _: answers[self.array_counter()]
             self.assertEqual(utils.ask_question("", int, False), int(answers[2]))
 
             # Test that a question that asks for a date is working correctly.
             # The behavior is similar to the above test.
             self.seq = -1
             answers = ["", "3fd43", "2015-07-28 20:48:53.197537+02:00", "yes"]
-            utils.raw_input = lambda _: answers[self.array_counter()]
+            utils.input = lambda _: answers[self.array_counter()]
             self.assertEqual(utils.ask_question("", datetime.datetime, False),
                              parse(answers[2]))
 
             # Check that None is not allowed as answer
             question = ""
             answer = ""
-            utils.raw_input = lambda x: answer if x == question else "y"
+            utils.input = lambda x: answer if x == question else "y"
             self.assertEqual(utils.ask_question(question, int, True), None)
+
+
+class FortranFormattingTest(unittest.TestCase):
+    """
+    Tests for the different Fortran formatting functions.
+    """
+
+    def test_fortfloat(self):
+        """
+        Check the `get_fortfloat` function.
+        """
+
+        floats_result = {
+            "0.1d2": 10.,
+             "0.D-3": 0.,
+             ".2e1": 2.,
+             "-0.23": -0.23,
+             "23.": 23.,
+             "232": 232.,
+            }
+
+        # the characters surrounding a float and the respective key:
+        surroundings = {
+            "charsbefore, abc = {}, charsafter": "abc",
+            "    charsbefore\n    abc = {}\n    charsafter": "abc",
+            "charsbefore, abc = {}\ncharsafter": "abc",
+            }
+
+        for surrounding, key in surroundings.items():
+            for value, result in floats_result.items():
+                # case sensitive
+                self.assertAlmostEqual(utils.get_fortfloat(key, surrounding.format(value)), result)
+                # check also the case insensitive case:
+                self.assertAlmostEqual(utils.get_fortfloat(key.upper(), surrounding.format(value), False), result)
+                # and the key not found case
+                self.assertIsNone(utils.get_fortfloat(key.upper(), surrounding.format(value)))
+
+
+class PrettifierTest(unittest.TestCase):
+    """
+    Tests for the Prettifier class methods.
+    """
+
+    def test_prettifier(self):
+        prettifier_data = {
+            'agr_seekpath': {
+                'DELTA_5': r'\xD\f{}\s5\N',
+                },
+            'agr_simple': {
+                'G': r'\xG',
+                'Boo3': r'Boo\s3\N',
+                'Boo99': r'Boo\s99\N',
+                },
+            'latex_simple': {
+                'G': r'$\Gamma$',
+                'Delta9': r'Delta$_{9}$',
+                'Delta90': r'Delta$_{90}$',
+                },
+            'latex_seekpath': {
+                'LAMBDA': r'$\Lambda$',
+                'something_2': r'something$_{2}$',
+                },
+            'gnuplot_simple': {
+                'G': u'Γ',
+                'bla3': r'bla_{3}',
+                'bla33': r'bla_{33}',
+                },
+            'gnuplot_seekpath': {
+                'SIGMA': u'Σ',
+                'bla_3': r'bla_{3}',
+                },
+            'pass': {
+                'foo': 'foo',
+                },
+            }
+
+        for prettifier_id in utils.Prettifier.get_prettifiers():
+            prettifier = utils.Prettifier(prettifier_id)
+
+            for label, prettified in prettifier_data[prettifier_id].items():
+                self.assertEqual(prettifier.prettify(label), prettified)
+
+class ListFunctionsTest(unittest.TestCase):
+    """
+    Tests for the different list manipulation functions.
+    """
+
+    def test_flatten_list(self):
+        self.assertEqual(utils.flatten_list([[[[[4],3]],[3],['a',[3]]]]), [4, 3, 3, 'a', 3])

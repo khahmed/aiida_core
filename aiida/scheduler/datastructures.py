@@ -16,11 +16,12 @@ the data structure that is returned when querying for jobs in the scheduler
 (JobInfo).
 """
 from __future__ import division
+from __future__ import absolute_import
 from aiida.common.extendeddicts import (DefaultFieldsAttributeDict, Enumerate)
 
 from aiida.common import aiidalogger
 
-scheduler_logger = aiidalogger.getChild('scheduler')
+SCHEDULER_LOGGER = aiidalogger.getChild('scheduler')
 
 
 class JobState(Enumerate):
@@ -35,7 +36,7 @@ class JobState(Enumerate):
 #   with the calc_states Enumerate).
 # NOTE: for the moment, I don't define FAILED
 # (I put everything in DONE)
-job_states = JobState((
+JOB_STATES = JobState((
     'UNDETERMINED',
     'QUEUED',
     'QUEUED_HELD',
@@ -127,6 +128,8 @@ class NodeNumberJobResource(JobResource):
 
         Should raise only ValueError or TypeError on invalid parameters.
         """
+        super(NodeNumberJobResource, self).__init__()
+
         try:
             num_machines = int(kwargs.pop('num_machines'))
         except KeyError:
@@ -251,6 +254,7 @@ class ParEnvJobResource(JobResource):
             computer, since ParEnvJobResource cannot accept this parameter.
         """
         from aiida.common.exceptions import ConfigurationError
+        super(ParEnvJobResource, self).__init__()
 
         try:
             self.parallel_env = str(kwargs.pop('parallel_env'))
@@ -320,10 +324,14 @@ class JobTemplate(DefaultFieldsAttributeDict):
         file (the one specified for stdout)
       * ``queue_name``: the name of the scheduler queue (sometimes also called
         partition), on which the job will be submitted.
+      * ``account``: the name of the scheduler account (sometimes also called
+        projectid), on which the job will be submitted.
+      * ``qos``: the quality of service of the scheduler account,
+        on which the job will be submitted.
       * ``job_resource``: a suitable :py:class:`JobResource`
         subclass with information on how many
         nodes and cpus it should use. It must be an instance of the
-        ``aiida.scheduler.Scheduler._job_resource_class`` class.
+        ``aiida.scheduler.Scheduler.job_resource_class`` class.
         Use the Scheduler.create_job_resource method to create it.
       * ``num_machines``: how many machines (or nodes) should be used
       * ``num_mpiprocs_per_machine``: how many MPI procs should be used on each
@@ -371,6 +379,7 @@ class JobTemplate(DefaultFieldsAttributeDict):
         The serial execution would be without the &'s.
         Values are given by aiida.common.datastructures.code_run_modes.
     """
+
     # #TODO: validation key? also call the validate function in the proper
     #        place then.
 
@@ -388,6 +397,8 @@ class JobTemplate(DefaultFieldsAttributeDict):
         'sched_error_path',
         'sched_join_files',
         'queue_name',
+        'account',
+        'qos',
         'job_resource',
         #        'num_machines',
         #        'num_mpiprocs_per_machine',
@@ -447,7 +458,7 @@ class JobInfo(DefaultFieldsAttributeDict):
        * ``annotation``: human-readable description of the reason for the job
          being in the current state or substate.
        * ``job_state``: the job state (one of those defined in
-         ``aiida.scheduler.datastructures.job_states``)
+         ``aiida.scheduler.datastructures.JOB_STATES``)
        * ``job_substate``: a string with the implementation-specific sub-state
        * ``allocated_machines``: a list of machines used for the current job.
          This is a list of :py:class:`MachineInfo` objects.
@@ -461,6 +472,10 @@ class JobInfo(DefaultFieldsAttributeDict):
          attribute can be used to know at least the number of machines.
        * ``queue_name``: The name of the queue in which the job is queued or
          running.
+       * ``account``: The account/projectid in which the job is queued or
+         running in.
+       * ``qos``: The quality of service in which the job is queued or
+         running in.
        * ``wallclock_time_seconds``: the accumulated wallclock time, in seconds
        * ``requested_wallclock_time_seconds``: the requested wallclock time,
          in seconds
@@ -472,9 +487,10 @@ class JobInfo(DefaultFieldsAttributeDict):
        * ``finish_time``: the absolute time at which the job first entered the
          'finished' state, of type datetime.datetime
     """
+
     _default_fields = ('job_id', 'title', 'exit_status', 'terminating_signal', 'annotation', 'job_state',
                        'job_substate', 'allocated_machines', 'job_owner', 'num_mpiprocs', 'num_cpus', 'num_machines',
-                       'queue_name', 'wallclock_time_seconds', 'requested_wallclock_time_seconds', 'cpu_time',
+                       'queue_name', 'account', 'qos', 'wallclock_time_seconds', 'requested_wallclock_time_seconds', 'cpu_time',
                        'submission_time', 'dispatch_time', 'finish_time')
 
     # If some fields require special serializers, specify them here.
@@ -486,43 +502,64 @@ class JobInfo(DefaultFieldsAttributeDict):
         'finish_time': 'date',
     }
 
-    def _serialize_date(self, v):
+    @staticmethod
+    def _serialize_date(value):
+        """
+        Serialise a data value
+        :param value: The value to serialise
+        :return: The serialised value
+        """
+
         import datetime
         import pytz
 
-        if v is None:
-            return v
+        if value is None:
+            return value
 
-        if not isinstance(v, datetime.datetime):
+        if not isinstance(value, datetime.datetime):
             raise TypeError("Invalid type for the date, should be a datetime")
 
         # is_naive check from django.utils.timezone
-        if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
+        if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
             # TODO: FIX TIMEZONE
-            scheduler_logger.debug("Datetime to serialize in JobInfo is naive, " "this should be fixed!")
+            SCHEDULER_LOGGER.debug("Datetime to serialize in JobInfo is naive, " "this should be fixed!")
             # v = v.replace(tzinfo = pytz.utc)
-            return {'date': v.strftime('%Y-%m-%dT%H:%M:%S.%f'), 'timezone': None}
-        else:
-            return {'date': v.astimezone(pytz.utc).strftime('%Y-%m-%dT%H:%M:%S.%f'), 'timezone': 'UTC'}
+            return {'date': value.strftime('%Y-%m-%dT%H:%M:%S.%f'), 'timezone': None}
 
-    def _deserialize_date(self, v):
+        return {'date': value.astimezone(pytz.utc).strftime('%Y-%m-%dT%H:%M:%S.%f'), 'timezone': 'UTC'}
+
+    @staticmethod
+    def _deserialize_date(value):
+        """
+        Deserialise a date
+        :param value: The date vlue
+        :return: The deserialised date
+        """
         import datetime
         import pytz
 
-        if v is None:
-            return v
+        if value is None:
+            return value
 
-        if v['timezone'] is None:
+        if value['timezone'] is None:
             # naive date
-            return datetime.datetime.strptime(v['date'], '%Y-%m-%dT%H:%M:%S.%f')
-        elif v['timezone'] == 'UTC':
-            return datetime.datetime.strptime(v['date'], '%Y-%m-%dT%H:%M:%S.%f').replace(tzinfo=pytz.utc)
-        else:
-            # Try your best
-            return datetime.datetime.strptime(v['date'],
-                                              '%Y-%m-%dT%H:%M:%S.%f').replace(tzinfo=pytz.timezone(v['timezone']))
+            return datetime.datetime.strptime(value['date'], '%Y-%m-%dT%H:%M:%S.%f')
+        elif value['timezone'] == 'UTC':
+            return datetime.datetime.strptime(value['date'], '%Y-%m-%dT%H:%M:%S.%f').replace(tzinfo=pytz.utc)
+
+        # Try your best
+        return datetime.datetime.strptime(value['date'],
+                                          '%Y-%m-%dT%H:%M:%S.%f').replace(tzinfo=pytz.timezone(value['timezone']))
 
     def serialize_field(self, value, field_type):
+        """
+        Serialise a particular field value
+
+        :param value: The value to serialise
+        :param field_type: The field type
+        :return: The serialised value
+        """
+
         if field_type is None:
             return value
 
@@ -531,6 +568,12 @@ class JobInfo(DefaultFieldsAttributeDict):
         return serializer_method(value)
 
     def deserialize_field(self, value, field_type):
+        """
+        Deserialise the value of a particular field with a type
+        :param value: The value
+        :param field_type: The field type
+        :return: The deserialised value
+        """
         if field_type is None:
             return value
 
@@ -539,16 +582,25 @@ class JobInfo(DefaultFieldsAttributeDict):
         return deserializer_method(value)
 
     def serialize(self):
+        """
+        Serialise the current data
+        :return: A serialised representation of the current data
+        """
         import json
 
-        ser_data = {k: self.serialize_field(v, self._special_serializers.get(k, None)) for k, v in self.iteritems()}
+        ser_data = {k: self.serialize_field(v, self._special_serializers.get(k, None)) for k, v in self.items()}
 
         return json.dumps(ser_data)
 
     def load_from_serialized(self, data):
+        """
+        Load value from serialised data
+        :param data: The data to load from
+        :return: The value after loading
+        """
         import json
 
         deser_data = json.loads(data)
 
-        for k, v in deser_data.iteritems():
-            self[k] = self.deserialize_field(v, self._special_serializers.get(k, None))
+        for key, value in deser_data.items():
+            self[key] = self.deserialize_field(value, self._special_serializers.get(key, None))

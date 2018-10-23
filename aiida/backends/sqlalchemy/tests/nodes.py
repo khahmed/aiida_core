@@ -11,6 +11,7 @@
 Tests for nodes, attributes and links
 """
 
+from __future__ import absolute_import
 from aiida.backends.testbase import AiidaTestCase
 from aiida.orm.node import Node
 
@@ -195,6 +196,20 @@ class TestNodeBasicSQLA(AiidaTestCase):
     (setting of attributes, copying of files, ...)
     """
 
+    def test_uuid_uniquess(self):
+        """
+        A uniqueness constraint on the UUID column of the Node model should prevent multiple nodes with identical UUID
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        a = Node()
+        b = Node()
+        b.dbnode.uuid = a.uuid
+        a.store()
+
+        with self.assertRaises(IntegrityError):
+            b.store()
+
     def test_settings(self):
         """
         Test the settings table (similar to Attributes, but without the key.
@@ -239,8 +254,8 @@ class TestNodeBasicSQLA(AiidaTestCase):
         a = Node()
         a.store()
 
-        self.assertEquals(a.pk, load_node(node_id=a.pk).pk)
-        self.assertEquals(a.pk, load_node(node_id=a.uuid).pk)
+        self.assertEquals(a.pk, load_node(identifier=a.pk).pk)
+        self.assertEquals(a.pk, load_node(identifier=a.uuid).pk)
         self.assertEquals(a.pk, load_node(pk=a.pk).pk)
         self.assertEquals(a.pk, load_node(uuid=a.uuid).pk)
 
@@ -249,7 +264,7 @@ class TestNodeBasicSQLA(AiidaTestCase):
         try:
             session.begin_nested()
             with self.assertRaises(InputValidationError):
-                load_node(node_id=a.pk, pk=a.pk)
+                load_node(identifier=a.pk, pk=a.pk)
         finally:
             session.rollback()
 

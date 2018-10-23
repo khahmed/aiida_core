@@ -8,6 +8,7 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 
+from __future__ import absolute_import
 from aiida.common.utils import classproperty
 from aiida.orm.implementation.calculation import Calculation
 
@@ -33,7 +34,7 @@ class WorkCalculation(Calculation):
         """
         return self.get_attr(self.STEPPER_STATE_INFO_KEY, None)
 
-    def _set_stepper_state_info(self, stepper_state_info):
+    def set_stepper_state_info(self, stepper_state_info):
         """
         Set the stepper state info of the Calculation
 

@@ -7,23 +7,23 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+from __future__ import absolute_import
 import json
-from aiida.orm.log import Log, LogEntry
-from aiida.orm.log import OrderSpecifier, ASCENDING, DESCENDING
+from aiida.orm.log import LogCollection, Log
+from aiida.orm.log import ASCENDING
 from aiida.backends.djsite.db.models import DbLog
-from aiida.utils import timezone
 
 
-class DjangoLog(Log):
-    def create_entry(self, time, loggername, levelname, objname,
-                     objpk=None, message="", metadata=None):
+class DjangoLogCollection(LogCollection):
+
+    def create_entry(self, time, loggername, levelname, objname, objpk=None, message="", metadata=None):
         """
         Create a log entry if and only if objpk and objname are set
         """
         if objpk is None or objname is None:
             return None
 
-        entry = DjangoLogEntry(
+        entry = DjangoLog(
             DbLog(
                 time=time,
                 loggername=loggername,
@@ -49,8 +49,8 @@ class DjangoLog(Log):
         if not filter_by:
             filter_by = {}
 
-        # Map the LogEntry property names to DbLog field names
-        for key, value in filter_by.iteritems():
+        # Map the Log property names to DbLog field names
+        for key, value in filter_by.items():
             filters[key] = value
 
         if not order_by:
@@ -67,7 +67,7 @@ class DjangoLog(Log):
         else:
             entries = DbLog.objects.filter().order_by(*order)[:limit]
 
-        return [DjangoLogEntry(entry) for entry in entries]
+        return [DjangoLog(entry) for entry in entries]
 
     def delete_many(self, filter):
         """
@@ -76,12 +76,13 @@ class DjangoLog(Log):
         if not filter:
             DbLog.objects.all().delete()
         else:
-            raise NotImplemented(
+            raise NotImplementedError(
                 "Only deleting all by passing an empty filer dictionary is "
                 "currently supported")
 
 
-class DjangoLogEntry(LogEntry):
+class DjangoLog(Log):
+
     def __init__(self, model):
         """
         :param model: :class:`aiida.backends.djsite.db.models.DbLog`

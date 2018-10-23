@@ -7,6 +7,10 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+from __future__ import absolute_import
+
+from six.moves import range
+
 try:
     from reentry import manager as epm
 except ImportError:
@@ -21,6 +25,7 @@ db_test_list = {
         'generic': ['aiida.backends.djsite.db.subtests.generic'],
         'nodes': ['aiida.backends.djsite.db.subtests.nodes'],
         'djangomigrations': ['aiida.backends.djsite.db.subtests.djangomigrations'],
+        'migrations': ['aiida.backends.djsite.db.subtests.migrations'],
         'query': ['aiida.backends.djsite.db.subtests.query'],
     },
     BACKEND_SQLA: {
@@ -42,19 +47,48 @@ db_test_list = {
         'parsers': ['aiida.backends.tests.parsers'],
         'tcodexporter': ['aiida.backends.tests.tcodexporter'],
         'query': ['aiida.backends.tests.query'],
-        'utils.serialize': ['aiida.backends.tests.utils.serialize'],
+        'utils.serialize': ['aiida.backends.tests.utils.test_serialize'],
         'workflows': ['aiida.backends.tests.workflows'],
         'calculation_node': ['aiida.backends.tests.calculation_node'],
         'backup_script': ['aiida.backends.tests.backup_script'],
         'backup_setup_script': ['aiida.backends.tests.backup_setup_script'],
         'restapi': ['aiida.backends.tests.restapi'],
-        'computer': ['aiida.backends.tests.computer'],
         'examplehelpers': ['aiida.backends.tests.example_helpers'],
+        'cmdline.commands.calculation': ['aiida.backends.tests.cmdline.commands.test_calculation'],
+        'cmdline.commands.code': ['aiida.backends.tests.cmdline.commands.test_code'],
+        'cmdline.commands.comment': ['aiida.backends.tests.cmdline.commands.test_comment'],
+        'cmdline.commands.computer': ['aiida.backends.tests.cmdline.commands.test_computer'],
+        'cmdline.commands.data': ['aiida.backends.tests.cmdline.commands.test_data'],
+        'cmdline.commands.devel': ['aiida.backends.tests.cmdline.commands.test_devel'],
+        'cmdline.commands.export': ['aiida.backends.tests.cmdline.commands.test_export'],
+        'cmdline.commands.graph': ['aiida.backends.tests.cmdline.commands.test_graph'],
+        'cmdline.commands.group': ['aiida.backends.tests.cmdline.commands.test_group'],
+        'cmdline.commands.import': ['aiida.backends.tests.cmdline.commands.test_import'],
+        'cmdline.commands.node': ['aiida.backends.tests.cmdline.commands.test_node'],
+        'cmdline.commands.process': ['aiida.backends.tests.cmdline.commands.test_process'],
+        'cmdline.commands.profile': ['aiida.backends.tests.cmdline.commands.test_profile'],
+        'cmdline.commands.rehash': ['aiida.backends.tests.cmdline.commands.test_rehash'],
+        'cmdline.commands.user': ['aiida.backends.tests.cmdline.commands.test_user'],
+        'cmdline.commands.work': ['aiida.backends.tests.cmdline.commands.test_work'],
+        'cmdline.commands.workflow': ['aiida.backends.tests.cmdline.commands.test_workflow'],
+        'cmdline.params.types.calculation': ['aiida.backends.tests.cmdline.params.types.test_calculation'],
+        'cmdline.params.types.code': ['aiida.backends.tests.cmdline.params.types.test_code'],
+        'cmdline.params.types.computer': ['aiida.backends.tests.cmdline.params.types.test_computer'],
+        'cmdline.params.types.data': ['aiida.backends.tests.cmdline.params.types.test_data'],
+        'cmdline.params.types.group': ['aiida.backends.tests.cmdline.params.types.test_group'],
+        'cmdline.params.types.identifier': ['aiida.backends.tests.cmdline.params.types.test_identifier'],
+        'cmdline.params.types.node': ['aiida.backends.tests.cmdline.params.types.test_node'],
+        'cmdline.params.types.plugin': ['aiida.backends.tests.cmdline.params.types.test_plugin'],
+        'cmdline.params.types.workflow': ['aiida.backends.tests.cmdline.params.types.test_workflow'],
+        'common.datastructures': ['aiida.backends.tests.common.test_datastructures'],
         'daemon.client': ['aiida.backends.tests.daemon.test_client'],
+        'orm.computer': ['aiida.backends.tests.computer'],
+        'orm.authinfo': ['aiida.backends.tests.orm.authinfo'],
         'orm.data.frozendict': ['aiida.backends.tests.orm.data.frozendict'],
+        'orm.data.remote': ['aiida.backends.tests.orm.data.remote'],
         'orm.log': ['aiida.backends.tests.orm.log'],
         'orm.mixins': ['aiida.backends.tests.orm.mixins'],
-        'orm.utils': ['aiida.backends.tests.orm.utils'],
+        'orm.utils.loaders': ['aiida.backends.tests.orm.utils.loaders'],
         'work.class_loader': ['aiida.backends.tests.work.class_loader'],
         'work.daemon': ['aiida.backends.tests.work.daemon'],
         'work.futures': ['aiida.backends.tests.work.test_futures'],
@@ -66,17 +100,18 @@ db_test_list = {
         'work.rmq': ['aiida.backends.tests.work.test_rmq'],
         'work.run': ['aiida.backends.tests.work.run'],
         'work.runners': ['aiida.backends.tests.work.test_runners'],
-        'work.utils': ['aiida.backends.tests.work.utils'],
+        'work.transport': ['aiida.backends.tests.work.test_transport'],
+        'work.utils': ['aiida.backends.tests.work.test_utils'],
         'work.work_chain': ['aiida.backends.tests.work.work_chain'],
         'work.workfunctions': ['aiida.backends.tests.work.test_workfunctions'],
         'work.job_processes': ['aiida.backends.tests.work.job_processes'],
         'plugin_loader': ['aiida.backends.tests.test_plugin_loader'],
         'daemon': ['aiida.backends.tests.daemon'],
-        'verdi_commands': ['aiida.backends.tests.verdi_commands'],
         'caching_config': ['aiida.backends.tests.test_caching_config'],
         'inline_calculation': ['aiida.backends.tests.inline_calculation'],
     }
 }
+
 
 def get_db_test_names():
     retlist = []
@@ -95,7 +130,7 @@ def get_db_test_names():
     for k in retlist:
         if '.' in k:
             parts = k.split('.')
-            for last_idx in range(1,len(parts)):
+            for last_idx in range(1, len(parts)):
                 parentkey = ".".join(parts[:last_idx])
                 final_list.append(parentkey)
 
@@ -128,10 +163,10 @@ def get_db_test_list():
         raise ConfigurationError("A 'common' key must always be defined!")
 
     retdict = defaultdict(list)
-    for k, tests in common_tests.iteritems():
+    for k, tests in common_tests.items():
         for t in tests:
             retdict[k].append(t)
-    for k, tests in be_tests.iteritems():
+    for k, tests in be_tests.items():
         for t in tests:
             retdict[k].append(t)
 
@@ -143,12 +178,12 @@ def get_db_test_list():
     # Explode the dictionary so that if I have a.b.c,
     # I can run it also just with 'a' or with 'a.b'
     final_retdict = defaultdict(list)
-    for k, v in retdict.iteritems():
+    for k, v in retdict.items():
         final_retdict[k] = v
-    for k, v in retdict.iteritems():
+    for k, v in retdict.items():
         if '.' in k:
             parts = k.split('.')
-            for last_idx in range(1,len(parts)):
+            for last_idx in range(1, len(parts)):
                 parentkey = ".".join(parts[:last_idx])
                 final_retdict[parentkey].extend(v)
 

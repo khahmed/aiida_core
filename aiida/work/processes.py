@@ -8,6 +8,7 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 
+from __future__ import absolute_import
 import abc
 import collections
 import enum
@@ -16,11 +17,14 @@ import itertools
 import plumpy
 import uuid
 import traceback
+
+import six
+from six.moves import zip, filter, range
 from pika.exceptions import ConnectionClosed
 
 from plumpy import ProcessState
+
 from aiida.common import exceptions
-from aiida.common import caching
 from aiida.common.lang import override, protected
 from aiida.common.links import LinkType
 from aiida.common.log import LOG_LEVEL_REPORT
@@ -32,7 +36,7 @@ from aiida.orm.calculation.work import WorkCalculation
 from aiida.orm.data import Data
 from aiida.utils.serialize import serialize_data, deserialize_data
 from aiida.work.ports import InputPort, PortNamespace
-from aiida.work.process_spec import ProcessSpec
+from aiida.work.process_spec import ProcessSpec, ExitCode
 from aiida.work.process_builder import ProcessBuilder
 from .runners import get_runner
 from . import utils
@@ -41,12 +45,12 @@ __all__ = ['Process', 'ProcessState', 'FunctionProcess']
 
 
 @plumpy.auto_persist('_parent_pid', '_enable_persistence')
+@six.add_metaclass(abc.ABCMeta)
 class Process(plumpy.Process):
     """
     This class represents an AiiDA process which can be executed and will
     have full provenance saved in the database.
     """
-    __metaclass__ = abc.ABCMeta
 
     _spec_type = ProcessSpec
     _calc_class = WorkCalculation
@@ -63,8 +67,8 @@ class Process(plumpy.Process):
     def define(cls, spec):
         super(Process, cls).define(spec)
         spec.input('store_provenance', valid_type=bool, default=True, non_db=True)
-        spec.input('description', valid_type=basestring, required=False, non_db=True)
-        spec.input('label', valid_type=basestring, required=False, non_db=True)
+        spec.input('description', valid_type=six.string_types[0], required=False, non_db=True)
+        spec.input('label', valid_type=six.string_types[0], required=False, non_db=True)
         spec.inputs.valid_type = (Data, Calculation)
         spec.outputs.valid_type = (Data,)
 
@@ -85,7 +89,7 @@ class Process(plumpy.Process):
         self._runner = runner if runner is not None else get_runner()
 
         super(Process, self).__init__(
-            inputs=inputs,
+            inputs=self.spec().inputs.serialize(inputs),
             logger=logger,
             loop=self._runner.loop,
             communicator=self.runner.communicator)
@@ -111,19 +115,25 @@ class Process(plumpy.Process):
         if self._logger is None:
             self.set_logger(self._calc.logger)
 
-    def has_finished(self):
-        """
-        Has the process finished i.e. completed running normally, without abort
-        or an exception.
-
-        :return: True if finished, False otherwise
-        :rtype: bool
-        """
-        return self.state == ProcessState.FINISHED
-
     @property
     def calc(self):
         return self._calc
+
+    def _save_checkpoint(self):
+        """
+        Save the current state in a chechpoint if persistence is enabled and the process state is not terminal
+
+        If the persistence call excepts with a PersistenceError, it will be caught and a warning will be logged.
+        """
+        if self._enable_persistence and not self._state.is_terminal():
+            try:
+                self.runner.persister.save_checkpoint(self)
+            except plumpy.PersistenceError:
+                self.logger.warning(
+                    "Exception trying to save checkpoint, this means you will "
+                    "not be able to restart in case of a crash until the next successful checkpoint.")
+                self.logger.debug(
+                    "Exception trying to save checkpoint:\n{}".format(traceback.format_exc()))
 
     @override
     def save_instance_state(self, out_state, save_context):
@@ -135,7 +145,7 @@ class Process(plumpy.Process):
         out_state[self.SaveKeys.CALC_ID.value] = self.pid
 
     def get_provenance_inputs_iterator(self):
-        return itertools.ifilter(lambda kv: not kv[0].startswith('_'), self.inputs.iteritems())
+        return filter(lambda kv: not kv[0].startswith('_'), self.inputs.items())
 
     @override
     def load_instance_state(self, saved_state, load_context):
@@ -159,11 +169,14 @@ class Process(plumpy.Process):
         """
         Kill the process and all the children calculations it called
         """
-        self._calc.logger.info('Kill Process<{}>'.format(self._calc.pk))
+        self._calc.logger.debug('Request to kill Process<{}>'.format(self._calc.pk))
+
+        had_been_terminated = self.has_terminated()
+
         result = super(Process, self).kill(msg)
 
         # Only kill children if we could be killed ourselves
-        if result is not False:
+        if result is not False and not had_been_terminated:
             killing = []
             for child in self.calc.called:
                 try:
@@ -211,16 +224,8 @@ class Process(plumpy.Process):
 
     def on_entered(self, from_state):
         super(Process, self).on_entered(from_state)
+        self._save_checkpoint()
         self.update_node_state(self._state)
-        if self._enable_persistence and not self._state.is_terminal():
-            try:
-                self.runner.persister.save_checkpoint(self)
-            except plumpy.PersistenceError as e:
-                self.logger.warning(
-                    "Exception trying to save checkpoint, this means you will "
-                    "not be able to restart in case of a crash until the next successful checkpoint.")
-                self.logger.debug(
-                    "Exception trying to save checkpoint:\n{}".format(traceback.format_exc()))
 
         # Update the latest process state change timestamp
         utils.set_process_state_change_timestamp(self)
@@ -234,8 +239,8 @@ class Process(plumpy.Process):
         if self._enable_persistence:
             try:
                 self.runner.persister.delete_checkpoint(self.pid)
-            except BaseException as e:
-                self.logger.warning("Failed to delete checkpoint: {}\n{}".format(e, traceback.format_exc()))
+            except BaseException as exception:
+                self.logger.warning('Failed to delete checkpoint: {}\n{}'.format(exception, traceback.format_exc()))
 
         try:
             self.calc.seal()
@@ -246,8 +251,12 @@ class Process(plumpy.Process):
     def on_except(self, exc_info):
         """
         Log the exception by calling the report method with formatted stack trace from exception info object
+        and store the exception string as a node attribute
+
+        :param exc_info: the sys.exc_info() object
         """
         super(Process, self).on_except(exc_info)
+        self.calc._set_exception(''.join(traceback.format_exception(exc_info[0], exc_info[1], None)))
         self.report(''.join(traceback.format_exception(*exc_info)))
 
     @override
@@ -256,7 +265,31 @@ class Process(plumpy.Process):
         Set the finish status on the Calculation node
         """
         super(Process, self).on_finish(result, successful)
-        self.calc._set_finish_status(result)
+
+        if result is None or isinstance(result, int):
+            self.calc._set_exit_status(result)
+        elif isinstance(result, ExitCode):
+            self.calc._set_exit_status(result.status)
+            self.calc._set_exit_message(result.message)
+        else:
+            raise ValueError('the result should be an integer, ExitCode or None, got {} {} {}'.format(type(result), result, self.pid))
+
+    @override
+    def on_paused(self, msg=None):
+        """
+        The Process was paused so set the paused attribute on the Calculation node
+        """
+        super(Process, self).on_paused(msg)
+        self._save_checkpoint()
+        self.calc.pause()
+
+    @override
+    def on_playing(self):
+        """
+        The Process was unpaused so remove the paused attribute on the Calculation node
+        """
+        super(Process, self).on_playing()
+        self.calc.unpause()
 
     @override
     def on_output_emitting(self, output_port, value):
@@ -267,13 +300,22 @@ class Process(plumpy.Process):
         :param value: The value emitted
         """
         super(Process, self).on_output_emitting(output_port, value)
+
         if not isinstance(value, Data):
             raise TypeError(
-                "Values outputted from process must be instances of AiiDA Data " \
-                "types.  Got: {}".format(value.__class__)
+                'Values output from process must be instances of AiiDA Data types, got {}'.format(value.__class__)
             )
 
     # end region
+
+    def set_status(self, status):
+        """
+        The status of the Process is about to be changed, so we reflect this is in node's attribute proxy.
+
+        :param status: the status message
+        """
+        super(Process, self).set_status(status)
+        self.calc._set_process_status(status)
 
     def run_process(self, process, *args, **inputs):
         with self.runner.child_runner() as runner:
@@ -320,7 +362,7 @@ class Process(plumpy.Process):
                     # returned regardless of whether they end in '_pk'
                     for name, value in self.calc.get_outputs_dict(link_type=LinkType.CREATE).items():
                         self.out(name, value)
-            except exceptions.ModificationNotAllowed as exception:
+            except exceptions.ModificationNotAllowed:
                 # The calculation was already stored
                 pass
 
@@ -355,8 +397,7 @@ class Process(plumpy.Process):
 
     def update_outputs(self):
         # Link up any new outputs
-        new_outputs = set(self.outputs.keys()) - \
-                      set(self.calc.get_outputs_dict(link_type=LinkType.RETURN).keys())
+        new_outputs = set(self.outputs.keys()) - set(self.calc.get_outputs_dict(link_type=LinkType.RETURN).keys())
         for label in new_outputs:
             value = self.outputs[label]
             # Try making us the creator
@@ -371,19 +412,53 @@ class Process(plumpy.Process):
             if utils.is_work_calc_type(self.calc):
                 value.add_link_from(self.calc, label, LinkType.RETURN)
 
-    def _setup_db_record(self):
-        assert self.inputs is not None
-        assert not self.calc.is_sealed, \
-            "Calculation cannot be sealed when setting up the database record"
+    @property
+    def process_class(self):
+        """
+        Return the class that represents this Process.
 
-        # Save the name of this process
+        For a standard Process or sub class of Process, this is the class itself. However, for legacy reasons,
+        the Process class is a wrapper around another class. This function returns that original class, i.e. the
+        class that really represents what was being executed.
+        """
+        return self.__class__
+
+    def _setup_db_record(self):
+        """
+        Create the database record for this process and the links with respect to its inputs
+
+        This function will set various attributes on the node that serve as a proxy for attributes of the Process.
+        This is essential as otherwise this information could only be introspected through the Process itself, which
+        is only available to the interpreter that has it in memory. To make this data introspectable from any
+        interpreter, for example for the command line interface, certain Process attributes are proxied through the
+        calculation node.
+
+        In addition, the parent calculation will be setup with a CALL link if applicable and all inputs will be
+        linked up as well.
+        """
+        assert self.inputs is not None
+        assert not self.calc.is_sealed, 'Calculation cannot be sealed when setting up the database record'
+
+        # Store important process attributes in the node proxy
         self.calc._set_process_state(None)
-        self.calc._set_process_label(self.__class__.__name__)
-        self.calc._set_process_type(self.__class__)
+        self.calc._set_process_label(self.process_class.__name__)
+        self.calc._set_process_type(self.process_class)
 
         parent_calc = self.get_parent_calc()
 
-        for name, input_value in self._flat_inputs().iteritems():
+        if parent_calc:
+            self.calc.add_link_from(parent_calc, 'CALL', link_type=LinkType.CALL)
+
+        self._setup_db_inputs()
+        self._add_description_and_label()
+
+    def _setup_db_inputs(self):
+        """
+        Create the links that connect the inputs to the calculation node that represents this Process
+        """
+        parent_calc = self.get_parent_calc()
+
+        for name, input_value in self._flat_inputs().items():
 
             if isinstance(input_value, Calculation):
                 input_value = utils.get_or_create_output_group(input_value)
@@ -391,16 +466,11 @@ class Process(plumpy.Process):
             if not input_value.is_stored:
                 # If the input isn't stored then assume our parent created it
                 if parent_calc:
-                    input_value.add_link_from(parent_calc, "CREATE", link_type=LinkType.CREATE)
+                    input_value.add_link_from(parent_calc, 'CREATE', link_type=LinkType.CREATE)
                 if self.inputs.store_provenance:
                     input_value.store()
 
             self.calc.add_link_from(input_value, name)
-
-        if parent_calc:
-            self.calc.add_link_from(parent_calc, "CALL", link_type=LinkType.CALL)
-
-        self._add_description_and_label()
 
     def _add_description_and_label(self):
         if self.inputs:
@@ -478,7 +548,7 @@ class Process(plumpy.Process):
 
         namespace_list = self._get_namespace_list(namespace=namespace, agglomerate=agglomerate)
         for namespace in namespace_list:
-            exposed_inputs_list = self.spec()._exposed_inputs[namespace][process_class]
+
             # The namespace None indicates the base level namespace
             if namespace is None:
                 inputs = self.inputs
@@ -492,7 +562,10 @@ class Process(plumpy.Process):
                 except KeyError:
                     raise ValueError('this process does not contain the "{}" input namespace'.format(namespace))
 
-            for name, port in port_namespace.ports.iteritems():
+            # Get the list of ports that were exposed for the given Process class in the current namespace
+            exposed_inputs_list = self.spec()._exposed_inputs[namespace][process_class]
+
+            for name, port in port_namespace.ports.items():
                 if name in inputs and name in exposed_inputs_list:
                     exposed_inputs[name] = inputs[name]
 
@@ -614,13 +687,15 @@ class FunctionProcess(Process):
             # Workfunctions return data types
             spec.outputs.valid_type = Data
 
-        return type(func.__name__, (FunctionProcess,),
-                    {
-                        '_func': staticmethod(func),
-                        Process.define.__name__: classmethod(_define),
-                        '_func_args': args,
-                        '_calc_node_class': calc_node_class
-                    })
+        return type(
+            func.__name__, (FunctionProcess,),
+            {
+                '_func': staticmethod(func),
+                Process.define.__name__: classmethod(_define),
+                '_func_args': args,
+                '_calc_node_class': calc_node_class
+            }
+        )
 
     @classmethod
     def create_inputs(cls, *args, **kwargs):
@@ -650,6 +725,17 @@ class FunctionProcess(Process):
             raise RuntimeError('Cannot persist a workfunction')
         super(FunctionProcess, self).__init__(enable_persistence=False, *args, **kwargs)
 
+    @property
+    def process_class(self):
+        """
+        Return the class that represents this Process, for the FunctionProcess this is the function itself.
+
+        For a standard Process or sub class of Process, this is the class itself. However, for legacy reasons,
+        the Process class is a wrapper around another class. This function returns that original class, i.e. the
+        class that really represents what was being executed.
+        """
+        return self._func
+
     def execute(self):
         result = super(FunctionProcess, self).execute()
         # Create a special case for Process functions: They can return
@@ -663,7 +749,6 @@ class FunctionProcess(Process):
     def _setup_db_record(self):
         super(FunctionProcess, self)._setup_db_record()
         self.calc.store_source_info(self._func)
-        self.calc._set_process_label(self._func.__name__)
 
     @override
     def _run(self):
@@ -687,17 +772,18 @@ class FunctionProcess(Process):
                 kwargs[name] = value
 
         result = self._func(*args, **kwargs)
-        if result is not None:
-            if isinstance(result, Data):
-                self.out(self.SINGLE_RETURN_LINKNAME, result)
-            elif isinstance(result, collections.Mapping):
-                for name, value in result.iteritems():
-                    self.out(name, value)
-            else:
-                raise TypeError(
-                    "Workfunction returned unsupported type '{}'\n"
-                    "Must be a Data type or a Mapping of {{string: Data}}".
-                        format(result.__class__))
 
-        # Execution successful so we return exit code (finish status) 0
-        return 0
+        if result is None or isinstance(result, ExitCode):
+            return result
+
+        if isinstance(result, Data):
+            self.out(self.SINGLE_RETURN_LINKNAME, result)
+        elif isinstance(result, collections.Mapping):
+            for name, value in result.items():
+                self.out(name, value)
+        else:
+            raise TypeError(
+                "Workfunction returned unsupported type '{}'\n"
+                "Must be a Data type or a Mapping of {{string: Data}}".format(result.__class__))
+
+        return ExitCode()

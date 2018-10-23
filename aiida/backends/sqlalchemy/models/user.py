@@ -8,6 +8,7 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 
+from __future__ import absolute_import
 from sqlalchemy.schema import Column
 from sqlalchemy.types import Integer, String, Boolean, DateTime
 from aiida.utils import timezone
@@ -48,4 +49,4 @@ class DbUser(Base):
     def get_aiida_class(self):
         from aiida.orm.implementation.sqlalchemy.user import SqlaUser
         from aiida.orm.backend import construct_backend
-        return SqlaUser._from_dbmodel(construct_backend(), self)
+        return SqlaUser.from_dbmodel(self, construct_backend())

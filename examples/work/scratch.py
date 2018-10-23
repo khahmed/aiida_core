@@ -1,4 +1,14 @@
+# -*- coding: utf-8 -*-
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida_core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
 
+from __future__ import absolute_import
 from aiida.work.workchain import WorkChain, while_, ToContext, Outputs
 from aiida.orm.data.float import Float
 from aiida.orm.data.str import Str
@@ -91,5 +101,5 @@ class EquationOfState2(WorkChain):
             self.insert_barrier(Calc(pid))
 
     def finalise(self):
-        for s, pid in self.ctx.launched.iteritems():
+        for s, pid in self.ctx.launched.items():
             self.out(s, load_node(pid)['output_parameters'].dict)

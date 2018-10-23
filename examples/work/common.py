@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida_core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+from __future__ import absolute_import
 from aiida import orm
 from aiida.orm.utils import CalculationFactory
 
@@ -49,7 +59,7 @@ def get_pseudos(structure, family_name):
     # Will contain a list of all species of the pseudo with given PK
     pseudo_species = defaultdict(list)
 
-    for kindname, pseudo in kind_pseudo_dict.iteritems():
+    for kindname, pseudo in kind_pseudo_dict.items():
         pseudo_dict[pseudo.pk] = pseudo
         pseudo_species[pseudo.pk].append(kindname)
 

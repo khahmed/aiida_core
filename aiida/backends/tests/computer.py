@@ -10,11 +10,10 @@
 """
 Tests for the NWChem input plugins.
 """
+from __future__ import absolute_import
 from aiida.backends.testbase import AiidaTestCase
 from aiida.transport import TransportFactory
 from aiida.common.exceptions import NotExistent
-
-
 
 
 class TestComputer(AiidaTestCase):
@@ -24,19 +23,15 @@ class TestComputer(AiidaTestCase):
         Test the get_transport method of Computer
         """
         import tempfile
-        from aiida.orm import Computer
-        from aiida.orm.backend import construct_backend
-        backend = construct_backend()
 
-        new_comp = Computer(name='bbb',
-                                hostname='localhost',
-                                transport_type='local',
-                                scheduler_type='direct',
-                                workdir='/tmp/aiida')
+        new_comp = self.backend.computers.create(name='bbb', hostname='localhost', transport_type='local',
+                                                 scheduler_type='direct', workdir='/tmp/aiida')
         new_comp.store()
 
         # Configure the computer - no parameters for local transport
-        authinfo = backend.authinfos.create(computer=new_comp, user=backend.users.get_automatic_user())
+        authinfo = self.backend.authinfos.create(
+            computer=new_comp,
+            user=self.backend.users.get_automatic_user())
         authinfo.store()
 
         transport = new_comp.get_transport()
@@ -49,22 +44,64 @@ class TestComputer(AiidaTestCase):
             self.assertEquals(transport.isfile(f.name), False)
 
     def test_delete(self):
-        from aiida.orm import Computer
-        new_comp = Computer(name='aaa',
-                                hostname='aaa',
-                                transport_type='local',
-                                scheduler_type='pbspro',
-                                workdir='/tmp/aiida')
+        new_comp = self.backend.computers.create(name='aaa', hostname='aaa', transport_type='local',
+                                                 scheduler_type='pbspro', workdir='/tmp/aiida')
         new_comp.store()
 
         comp_pk = new_comp.pk
 
-        check_computer = Computer.get(comp_pk)
+        check_computer = self.backend.computers.get(comp_pk)
         self.assertEquals(comp_pk, check_computer.pk)
-        
-        from aiida.orm.computer import delete_computer
-        delete_computer(pk=comp_pk)
+
+        self.backend.computers.delete(comp_pk)
 
         with self.assertRaises(NotExistent):
-            Computer.get(comp_pk)
+            self.backend.computers.get(comp_pk)
 
+
+class TestComputerConfigure(AiidaTestCase):
+
+    def setUp(self):
+        """Prepare current user and computer builder with common properties."""
+        from aiida.control.computer import ComputerBuilder
+
+        backend = self.backend
+        self.comp_builder = ComputerBuilder(label='test', description='Test Computer', enabled=True, hostname='localhost')
+        self.comp_builder.scheduler = 'direct'
+        self.comp_builder.work_dir = '/tmp/aiida'
+        self.comp_builder.prepend_text = ''
+        self.comp_builder.append_text = ''
+        self.comp_builder.mpiprocs_per_machine = 8
+        self.comp_builder.mpirun_command = 'mpirun'
+        self.comp_builder.shebang = '#!xonsh'
+        self.user = backend.users.get_automatic_user()
+
+    def test_configure_local(self):
+        """Configure a computer for local transport and check it is configured."""
+        self.comp_builder.label = 'test_configure_local'
+        self.comp_builder.transport = 'local'
+        comp = self.comp_builder.new()
+        comp.store()
+
+        comp.configure()
+        self.assertTrue(comp.is_user_configured(self.user))
+
+    def test_configure_ssh(self):
+        """Configure a computer for ssh transport and check it is configured."""
+        self.comp_builder.label = 'test_configure_ssh'
+        self.comp_builder.transport = 'ssh'
+        comp = self.comp_builder.new()
+        comp.store()
+
+        comp.configure(username='radames', port='22')
+        self.assertTrue(comp.is_user_configured(self.user))
+
+    def test_configure_ssh_invalid(self):
+        """Try to configure computer with invalid auth params and check it fails."""
+        self.comp_builder.label = 'test_configure_ssh_invalid'
+        self.comp_builder.transport = 'ssh'
+        comp = self.comp_builder.new()
+        comp.store()
+
+        with self.assertRaises(ValueError):
+            comp.configure(username='radames', invalid_auth_param='TEST')

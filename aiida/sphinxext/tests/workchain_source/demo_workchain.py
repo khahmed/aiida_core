@@ -1,7 +1,17 @@
+# -*- coding: utf-8 -*-
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida_core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
 """This module defines an example workchain for the aiida-workchain documentation directive."""
 
 # This import is here to test an error which is triggered if
 # can_document_member raises an exception.
+from __future__ import absolute_import
 import re
 
 from aiida.work.workchain import WorkChain

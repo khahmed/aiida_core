@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida_core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
 """Delete the kombu tables that were used by the old Celery based daemon and the obsolete related timestamps
 
 Revision ID: f9a69de76a9a
@@ -5,6 +14,8 @@ Revises: 6c629c886f84
 Create Date: 2018-05-10 15:07:59.235950
 
 """
+from __future__ import absolute_import
+from __future__ import print_function
 from alembic import op
 from sqlalchemy.sql import text
 
@@ -37,4 +48,4 @@ def upgrade():
 
 
 def downgrade():
-    print 'There is no downgrade for the deletion of the kombu tables and the daemon timestamps'
+    print('There is no downgrade for the deletion of the kombu tables and the daemon timestamps')

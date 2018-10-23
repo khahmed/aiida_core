@@ -8,7 +8,10 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 
-import copy
+from __future__ import absolute_import
+from functools import reduce
+
+import six
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
@@ -21,13 +24,13 @@ from aiida.common.folders import RepositoryFolder
 from aiida.common.links import LinkType
 from aiida.common.utils import get_new_uuid, type_check
 from aiida.orm.implementation.general.node import AbstractNode, _NO_DEFAULT, _HASH_EXTRA_KEY
-from aiida.orm.implementation.django.computer import Computer
-from aiida.orm.mixins import Sealable
 
+from . import computer as computers
 from . import user as users
 
 
 class Node(AbstractNode):
+
     @classmethod
     def get_subclass_from_uuid(cls, uuid):
         from aiida.backends.djsite.db.models import DbNode
@@ -276,11 +279,11 @@ class Node(AbstractNode):
             DbLink.objects.create(input=src._dbnode, output=self._dbnode,
                                   label=label, type=link_type.value)
             transaction.savepoint_commit(sid)
-        except IntegrityError as e:
+        except IntegrityError as exc:
             transaction.savepoint_rollback(sid)
             raise UniquenessError("There is already a link with the same "
                                   "name (raw message was {})"
-                                  "".format(e.message))
+                                  "".format(exc))
 
     def _get_db_input_links(self, link_type):
         from aiida.backends.djsite.db.models import DbLink
@@ -309,11 +312,11 @@ class Node(AbstractNode):
         if self._dbnode.dbcomputer is None:
             return None
         else:
-            return Computer(dbcomputer=self._dbnode.dbcomputer)
+            return self._backend.computers.from_dbmodel(self._dbnode.dbcomputer)
 
     def _set_db_computer(self, computer):
-        from aiida.backends.djsite.db.models import DbComputer
-        self._dbnode.dbcomputer = DbComputer.get_dbcomputer(computer)
+        type_check(computer, computers.DjangoComputer)
+        self._dbnode.dbcomputer = computer.dbcomputer
 
     def _set_db_attr(self, key, value):
         """
@@ -354,10 +357,9 @@ class Node(AbstractNode):
         raise NotImplementedError("Reset of extras has not been implemented"
                                   "for Django backend.")
 
-    def _get_db_extra(self, key, *args):
+    def _get_db_extra(self, key):
         from aiida.backends.djsite.db.models import DbExtra
-        return DbExtra.get_value_for_node(dbnode=self._dbnode,
-                                          key=key)
+        return DbExtra.get_value_for_node(dbnode=self._dbnode, key=key)
 
     def _del_db_extra(self, key):
         from aiida.backends.djsite.db.models import DbExtra
@@ -392,25 +394,27 @@ class Node(AbstractNode):
 
     def add_comment(self, content, user=None):
         from aiida.backends.djsite.db.models import DbComment
-        from . import user as users
 
         if not self.is_stored:
             raise ModificationNotAllowed("Comments can be added only after "
                                          "storing the node")
 
-        DbComment.objects.create(dbnode=self._dbnode,
-                                 user=user.dbuser,
-                                 content=content)
+        if user is None:
+            user = self.backend.users.get_automatic_user()
 
-    def get_comment_obj(self, id=None, user=None):
+        return DbComment.objects.create(dbnode=self._dbnode,
+                                        user=user.dbuser,
+                                        content=content).id
+
+    def get_comment_obj(self, comment_id=None, user=None):
         from aiida.backends.djsite.db.models import DbComment
         import operator
         from django.db.models import Q
         query_list = []
 
         # If an id is specified then we add it to the query
-        if id is not None:
-            query_list.append(Q(pk=id))
+        if comment_id is not None:
+            query_list.append(Q(pk=comment_id))
 
         # If a user is specified then we add it to the query
         if user is not None:
@@ -461,7 +465,7 @@ class Node(AbstractNode):
         comment = list(DbComment.objects.filter(dbnode=self._dbnode,
                                                 pk=comment_pk, user=user))[0]
 
-        if not isinstance(new_field, basestring):
+        if not isinstance(new_field, six.string_types):
             raise ValueError("Non string comments are not accepted")
 
         if not comment:
@@ -487,26 +491,9 @@ class Node(AbstractNode):
         # otherwise I only get the Django Field F object as a result!
         self._dbnode = DbNode.objects.get(pk=self._dbnode.pk)
 
-    def copy(self, **kwargs):
-        newobject = self.__class__()
-        newobject._dbnode.type = self._dbnode.type  # Inherit type
-        newobject.label = self.label  # Inherit label
-        # TODO: add to the description the fact that this was a copy?
-        newobject.description = self.description  # Inherit description
-        newobject._dbnode.dbcomputer = self._dbnode.dbcomputer  # Inherit computer
-
-        for k, v in self.iterattrs():
-            if k != Sealable.SEALED_KEY:
-                newobject._set_attr(k, v)
-
-        for path in self.get_folder_list():
-            newobject.add_path(self.get_abs_path(path), path)
-
-        return newobject
-
     @property
     def uuid(self):
-        return unicode(self._dbnode.uuid)
+        return six.text_type(self._dbnode.uuid)
 
     @property
     def id(self):
@@ -551,7 +538,7 @@ class Node(AbstractNode):
         return self
 
     def get_user(self):
-        return self._backend.users._from_dbmodel(self._dbnode.user)
+        return self._backend.users.from_dbmodel(self._dbnode.user)
 
     def set_user(self, user):
         type_check(user, users.DjangoUser)

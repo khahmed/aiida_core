@@ -7,13 +7,15 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+from __future__ import absolute_import
 import warnings
+
 from aiida.common.log import configure_logging
 from aiida.common.setup import get_property
 
 __copyright__ = u"Copyright (c), This file is part of the AiiDA platform. For further information please visit http://www.aiida.net/. All rights reserved."
 __license__ = "MIT license, see LICENSE.txt file."
-__version__ = "1.0.0a1"
+__version__ = "1.0.0a3"
 __authors__ = "The AiiDA team."
 __paper__ = """G. Pizzi, A. Cepellotti, R. Sabatini, N. Marzari, and B. Kozinsky, "AiiDA: automated interactive infrastructure and database for computational science", Comp. Mat. Sci 111, 218-230 (2016); http://dx.doi.org/10.1016/j.commatsci.2015.09.013 - http://www.aiida.net."""
 __paper_short__ = """G. Pizzi et al., Comp. Mat. Sci 111, 218 (2016)."""
@@ -26,6 +28,7 @@ if get_property("warnings.showdeprecations"):
     # in Python 2.7 it is suppressed by default
     warnings.simplefilter('default', DeprecationWarning)
 
+
 def try_load_dbenv(*argc, **argv):
     """
     Run `load_dbenv` unless the dbenv has already been loaded.
@@ -34,6 +37,7 @@ def try_load_dbenv(*argc, **argv):
         load_dbenv(*argc, **argv)
         return True
     return False
+
 
 def load_dbenv(*argc, **argv):
     """
@@ -51,9 +55,21 @@ def is_dbenv_loaded(*argc, **argv):
     return is_dbenv_loaded(*argc, **argv)
 
 
+def get_strict_version():
+    """
+    Return a distutils StrictVersion instance with the current distribution version
+
+    :returns: StrictVersion instance with the current version
+    """
+    from distutils.version import StrictVersion
+    return StrictVersion(__version__)
+
+
 def get_version():
     """
-    Very simple function to get a string with the version number.
+    Return the current distribution version
+
+    :returns: a string with the current version
     """
     return __version__
 
@@ -70,6 +86,7 @@ If you use AiiDA for publication purposes, please cite:
 {}
 """.format(__version__, __paper__)
 
+
 def get_file_header(comment_char="# "):
     """
     Get a string to be put as header of files created with AiiDA;
@@ -79,4 +96,4 @@ def get_file_header(comment_char="# "):
     :return: a (multiline) string
     """
     lines = _get_raw_file_header().splitlines()
-    return "\n".join("{}{}".format(comment_char, line) for line in lines)
+    return '\n'.join('{}{}'.format(comment_char, line) for line in lines)

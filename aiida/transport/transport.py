@@ -1,42 +1,58 @@
-from abc import ABCMeta, abstractmethod
+# -*- coding: utf-8 -*-
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida_core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
+"""Transport interface."""
+from __future__ import absolute_import
+from abc import ABCMeta
 import os
 import re
 import fnmatch
 import sys
-import aiida.common
+from collections import OrderedDict
+
+import six
 from aiida.common.exceptions import InternalError
+from aiida.common.utils import classproperty
 from aiida.utils import DEFAULT_TRANSPORT_INTERVAL
 
 
+# pylint: disable=too-many-public-methods
+@six.add_metaclass(ABCMeta)
 class Transport(object):
     """
     Abstract class for a generic transport (ssh, local, ...)
     Contains the set of minimal methods
     """
-    __metaclass__ = ABCMeta
 
     # To be defined in the subclass
     # See the ssh or local plugin to see the format
     _valid_auth_params = None
     _MAGIC_CHECK = re.compile('[*?[]')
+    _valid_auth_options = []
+    _common_auth_options = [('safe_interval', {
+        'type': int,
+        'prompt': 'Connection cooldown time (sec)',
+        'help': 'Minimum time between connections in sec',
+        'non_interactive_default': True
+    })]
 
-    # Time in seconds between consecutive checks
-    # Set to a non-zero value to be safe e.g. in the case of transports with a connection limit,
-    # to avoid overloading the server (and being banned). Should be overriden
-    # in plugins. This is anyway just a default, as the value can be changed
-    # by the user in the Computer properties, for instance.
-    # Currently both the local and the ssh transport override this value, so this is not used,
-    # but it will be the default for possible new plugins.
-    _DEFAULT_SAFE_OPEN_INTERVAL = DEFAULT_TRANSPORT_INTERVAL
-
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):  # pylint: disable=unused-argument
         """
         __init__ method of the Transport base class.
         """
-        self._logger = aiida.common.aiidalogger.getChild('transport').getChild(self.__class__.__name__)
+        from aiida.common import aiidalogger
 
+        self._logger = aiidalogger.getChild('transport').getChild(self.__class__.__name__)
         self._logger_extra = None
+        self._is_open = False
         self._enters = 0
+        self._safe_open_interval = DEFAULT_TRANSPORT_INTERVAL
 
     def __enter__(self):
         """
@@ -56,19 +72,28 @@ class Transport(object):
         >>> # ...closed
 
         """
-        # Keep track od how many times enter has been called
+        # Keep track of how many times enter has been called
         if self._enters == 0:
-            self.open()
+            if self.is_open:
+                # Already open, so just add one to the entered counter
+                # this way on the final exit we will not close
+                self._enters += 1
+            else:
+                self.open()
         self._enters += 1
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type_, value, traceback):
         """
         Closes connections, if needed (used in 'with' statements).
         """
         self._enters -= 1
         if self._enters == 0:
             self.close()
+
+    @property
+    def is_open(self):
+        return self._is_open
 
     def open(self):
         """
@@ -104,20 +129,19 @@ class Transport(object):
         self._logger_extra = logger_extra
 
     @classmethod
-    def get_short_doc(self):
+    def get_short_doc(cls):
         """
         Return the first non-empty line of the class docstring, if available
         """
         # Remove empty lines
-        docstring = self.__doc__
+        docstring = cls.__doc__
         if not docstring:
             return "No documentation available"
 
         doclines = [i for i in docstring.splitlines() if i.strip()]
         if doclines:
             return doclines[0].strip()
-        else:
-            return "No documentation available"
+        return "No documentation available"
 
     @classmethod
     def get_valid_transports(cls):
@@ -133,10 +157,28 @@ class Transport(object):
         """
         Return the internal list of valid auth_params
         """
-        if cls._valid_auth_params is None:
+        if cls._valid_auth_options is None:
             raise NotImplementedError
         else:
-            return cls._valid_auth_params
+            return cls.auth_options.keys()  # pylint: disable=no-member
+
+    @classproperty
+    def auth_options(cls):  # pylint: disable=no-self-argument
+        return OrderedDict(cls._valid_auth_options + cls._common_auth_options)
+
+    @classmethod
+    def _get_safe_interval_suggestion_string(cls, computer):  # pylint: disable=unused-argument
+        """
+        Default time in seconds between consecutive checks.
+
+        Set to a non-zero value to be safe e.g. in the case of transports with a connection limit,
+        to avoid overloading the server (and being banned). Should be overriden
+        in plugins. This is anyway just a default, as the value can be changed
+        by the user in the Computer properties, for instance.
+        Currently both the local and the ssh transport override this value, so this is not used,
+        but it will be the default for possible new plugins.
+        """
+        return DEFAULT_TRANSPORT_INTERVAL
 
     @property
     def logger(self):
@@ -148,12 +190,10 @@ class Transport(object):
         """
         try:
             import logging
-            from aiida.common.log import get_dblogger_extra
 
             if self._logger_extra is not None:
                 return logging.LoggerAdapter(logger=self._logger, extra=self._logger_extra)
-            else:
-                return self._logger
+            return self._logger
         except AttributeError:
             raise InternalError("No self._logger configured for {}!")
 
@@ -173,7 +213,7 @@ class Transport(object):
         :return: The safe interval between calling open, in seconds
         :rtype: float
         """
-        return self._DEFAULT_SAFE_OPEN_INTERVAL
+        return self._safe_open_interval
 
     def chdir(self, path):
         """
@@ -183,12 +223,6 @@ class Transport(object):
         :raises: IOError, if the requested path does not exist
         :rtype: str
         """
-        # #TODO: understand if we want this behavior: this is emulated
-        # by paramiko, and we should emulate it also for the local
-        #        transport, since we do not want a global chdir for the whole
-        #        code (the same holds for get_pwd).
-        #        However, it could be useful to execute by default the
-        #        codes from that specific directory.
 
         raise NotImplementedError
 
@@ -214,37 +248,45 @@ class Transport(object):
         """
         raise NotImplementedError
 
-    def copy(self, remotesource, remotedestination, *args, **kwargs):
+    def copy(self, remotesource, remotedestination, dereference=False, recursive=True):
         """
         Copy a file or a directory from remote source to remote destination
         (On the same remote machine)
 
         :param str remotesource: path of the remote source directory / file
         :param str remotedestination: path of the remote destination directory / file
+        :param dereference: if True copy the contents of any symlinks found, otherwise copy the symlinks themselves
+        :type dereference: bool
+        :param recursive: if True copy directories recursively, otherwise only copy the specified file(s)
+        :type recursive: bool
 
         :raises: IOError, if one of src or dst does not exist
         """
         raise NotImplementedError
 
-    def copyfile(self, remotesource, remotedestination, *args, **kwargs):
+    def copyfile(self, remotesource, remotedestination, dereference=False):
         """
         Copy a file from remote source to remote destination
         (On the same remote machine)
 
         :param str remotesource: path of the remote source directory / file
         :param str remotedestination: path of the remote destination directory / file
+        :param dereference: if True copy the contents of any symlinks found, otherwise copy the symlinks themselves
+        :type dereference: bool
 
         :raises IOError: if one of src or dst does not exist
         """
         raise NotImplementedError
 
-    def copytree(self, remotesource, remotedestination, *args, **kwargs):
+    def copytree(self, remotesource, remotedestination, dereference=False):
         """
         Copy a folder from remote source to remote destination
         (On the same remote machine)
 
         :param str remotesource: path of the remote source directory / file
         :param str remotedestination: path of the remote destination directory / file
+        :param dereference: if True copy the contents of any symlinks found, otherwise copy the symlinks themselves
+        :type dereference: bool
 
         :raise IOError: if one of src or dst does not exist
         """
@@ -280,8 +322,6 @@ class Transport(object):
             'overwrite': True,
             'ignore_nonexisting': False,
         }
-        # TODO: dereference should be set to False in the following, as soon as
-        # dereference=False is supported by all transport plugins
         kwargs_put = {
             'callback': kwargs.pop('callback', None),
             'dereference': True,
@@ -434,7 +474,7 @@ class Transport(object):
         """
         raise NotImplementedError
 
-    def listdir_withattributes(self, path='.', pattern=None):
+    def listdir_withattributes(self, path='.', pattern=None):  # pylint: disable=unused-argument
         """
         Return a list of the names of the entries in the given path.
         The list is in arbitrary order. It does not include the special
@@ -459,10 +499,10 @@ class Transport(object):
         """
         retlist = []
         full_path = self.getcwd()
-        for f in self.listdir():
-            filepath = os.path.join(full_path, f)
+        for file_name in self.listdir():
+            filepath = os.path.join(full_path, file_name)
             attributes = self.get_attribute(filepath)
-            retlist.append({'name': f, 'attributes': attributes, 'isdir': self.isdir(filepath)})
+            retlist.append({'name': file_name, 'attributes': attributes, 'isdir': self.isdir(filepath)})
         return retlist
 
     def makedirs(self, path, ignore_existing=False):
@@ -607,7 +647,6 @@ class Transport(object):
                  retval (int),
                  stderr (str)
         """
-        # TODO : add tests for this method
 
         command = 'whoami'
         retval, username, stderr = self.exec_command_wait(command)
@@ -670,38 +709,37 @@ class Transport(object):
     # takes a literal basename (so it only has to check for its existence).
 
     def glob1(self, dirname, pattern):
+        """Match subpaths of dirname against pattern."""
         if not dirname:
             # dirname = os.curdir # ORIGINAL
             dirname = self.getcwd()
-        if isinstance(pattern, unicode) and not isinstance(dirname, unicode):
-            dirname = unicode(dirname, sys.getfilesystemencoding() or sys.getdefaultencoding())
+        if isinstance(pattern, six.text_type) and not isinstance(dirname, six.text_type):
+            dirname = dirname.decode(sys.getfilesystemencoding() or sys.getdefaultencoding())
         try:
             # names = os.listdir(dirname)
             # print dirname
             names = self.listdir(dirname)
-        except os.error:
-            return []
-        except IOError:
+        except EnvironmentError:  # in PY2 a superclass of OS/IOError, in PY3 an alias for OSError, like IOError
             return []
         if pattern[0] != '.':
-            names = filter(lambda x: x[0] != '.', names)
+            names = [name for name in names if name[0] != '.']
         return fnmatch.filter(names, pattern)
 
     def glob0(self, dirname, basename):
+        """Wrap basename i a list if it is empty or if dirname/basename is an existing path, else return empty list."""
         if basename == '':
             # `os.path.split()` returns an empty basename for paths ending with a
             # directory separator.  'q*x/' should match only directories.
             # if os.path.isdir(dirname):
             if self.isdir(dirname):
                 return [basename]
-        else:
+        elif self.path_exists(os.path.join(dirname, basename)):
             # if os.path.lexists(os.path.join(dirname, basename)):
-            if self.path_exists(os.path.join(dirname, basename)):
-                return [basename]
+            return [basename]
         return []
 
-    def has_magic(self, s):
-        return self._MAGIC_CHECK.search(s) is not None
+    def has_magic(self, string):
+        return self._MAGIC_CHECK.search(string) is not None
 
 
 class TransportInternalError(InternalError):

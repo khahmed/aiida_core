@@ -1,7 +1,17 @@
+# -*- coding: utf-8 -*-
+###########################################################################
+# Copyright (c), The AiiDA team. All rights reserved.                     #
+# This file is part of the AiiDA code.                                    #
+#                                                                         #
+# The code is hosted on GitHub at https://github.com/aiidateam/aiida_core #
+# For further information on the license, see the LICENSE.txt file        #
+# For further information please visit http://www.aiida.net               #
+###########################################################################
 """
 Defines an rst directive to auto-document AiiDA workchains.
 """
 
+from __future__ import absolute_import
 from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.parsers.rst import Directive, directives
@@ -39,9 +49,12 @@ class AiidaWorkchainDirective(Directive):
     Directive to auto-document AiiDA workchains.
     """
     required_arguments = 1
+    optional_arguments = 0
+    final_argument_whitespace = True
+
     HIDE_UNSTORED_INPUTS_FLAG = 'hide-nondb-inputs'
-    optional_arguments = 2
     option_spec = {'module': directives.unchanged, HIDE_UNSTORED_INPUTS_FLAG: directives.flag}
+
     has_content = True
 
     def run(self):

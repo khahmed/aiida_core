@@ -7,25 +7,37 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+from __future__ import absolute_import
 import abc
+import six
 
 from aiida.transport import TransportFactory
 from aiida.common.exceptions import (ConfigurationError, MissingPluginError)
+from .backend import Collection, CollectionEntry
 
 __all__ = ['AuthInfo', 'AuthInfoCollection']
 
 
-class AuthInfoCollection(object):
-    __metaclass__ = abc.ABCMeta
+@six.add_metaclass(abc.ABCMeta)
+class AuthInfoCollection(Collection):
+    """The collection of AuthInfo entries."""
 
     @abc.abstractmethod
     def create(self, computer, user):
         """
         Create a AuthInfo given a computer and a user
 
-        :param computer: A Computer or DbComputer instance
-        :param user: A User or DbUser instance
-        :return: a AuthInfo object associated to the given computer and User
+        :param computer: a Computer instance
+        :param user: a User instance
+        :return: a AuthInfo object associated to the given computer and user
+        """
+        pass
+
+    @abc.abstractmethod
+    def remove(self, authinfo_id):
+        """
+        Remove an AuthInfo from the collection with the given id
+        :param authinfo_id: The ID of the authinfo to delete
         """
         pass
 
@@ -34,30 +46,23 @@ class AuthInfoCollection(object):
         """
         Return a AuthInfo given a computer and a user
 
-        :param computer: A Computer or DbComputer instance
-        :param user: A User or DbUser instance
-        :return: a AuthInfo object associated to the given computer and User, if any
+        :param computer: a Computer instance
+        :param user: a User instance
+        :return: a AuthInfo object associated to the given computer and user
         :raise NotExistent: if the user is not configured to use computer
         :raise sqlalchemy.orm.exc.MultipleResultsFound: if the user is configured
-             more than once to use the computer! Should never happen
+            more than once to use the computer! Should never happen
         """
         pass
 
 
-class AuthInfo(object):
+@six.add_metaclass(abc.ABCMeta)
+class AuthInfo(CollectionEntry):
     """
     Base class to map a DbAuthInfo, that contains computer configuration
     specific to a given user (authorization info and other metadata, like
     how often to check on a given computer etc.)
     """
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, backend):
-        self._backend = backend
-
-    @property
-    def backend(self):
-        return self._backend
 
     def pk(self):
         """
@@ -167,10 +172,9 @@ class AuthInfo(object):
         computer = self.computer
         try:
             ThisTransport = TransportFactory(computer.get_transport_type())
-        except MissingPluginError as e:
+        except MissingPluginError as exc:
             raise ConfigurationError('No transport found for {} [type {}], message: {}'.format(
-                computer.hostname, computer.get_transport_type(), e.message))
+                computer.hostname, computer.get_transport_type(), exc))
 
-        params = dict(computer.get_transport_params().items() +
-                      self.get_auth_params().items())
+        params = dict(list(computer.get_transport_params().items()) + list(self.get_auth_params().items()))
         return ThisTransport(machine=computer.hostname, **params)

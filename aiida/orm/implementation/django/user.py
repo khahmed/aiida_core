@@ -8,27 +8,30 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 
+from __future__ import absolute_import
+from functools import reduce
+
 from aiida.backends.djsite.db.models import DbUser
 from aiida.orm.user import User, UserCollection
 from aiida.utils.email import normalize_email
 from aiida.common.utils import type_check
-
 from . import utils
 
 
 class DjangoUserCollection(UserCollection):
-    def create(self, email):
+
+    def create(self, email, first_name='', last_name='', institution=''):
         """
         Create a user with the provided email address
 
-        :param email: An email address for the user
         :return: A new user object
         :rtype: :class:`aiida.orm.User`
         """
-        return DjangoUser(self, email=normalize_email(email))
-
-    def _from_dbmodel(self, dbuser):
-        return DjangoUser._from_dbmodel(self, dbuser)
+        return DjangoUser(self.backend,
+                          email=normalize_email(email),
+                          first_name=first_name,
+                          last_name=last_name,
+                          institution=institution)
 
     def find(self, email=None, id=None):
         # Constructing the default query
@@ -50,32 +53,40 @@ class DjangoUserCollection(UserCollection):
             dbusers = DbUser.objects.filter(reduce(operator.and_, query_list))
         users = []
         for dbuser in dbusers:
-            users.append(self._from_dbmodel(dbuser))
+            users.append(self.from_dbmodel(dbuser))
         return users
+
+    def from_dbmodel(self, dbmodel):
+        return DjangoUser.from_dbmodel(dbmodel, self.backend)
 
 
 class DjangoUser(User):
+
     @classmethod
-    def _from_dbmodel(cls, backend, dbuser):
+    def from_dbmodel(cls, dbmodel, backend):
         """
         Create a DjangoUser from a dbmodel instance
 
         :param backend: The backend
         :type backend: :class:`DjangoUserCollection`
-        :param dbuser: The dbuser instance
-        :type dbuser: :class:`aiida.backends.djsite.db.models.DbUser`
+        :param dbmodel: The dbmodel instance
+        :type dbmodel: :class:`aiida.backends.djsite.db.models.DbUser`
         :return: A DjangoUser instance
         :rtype: :class:`DjangoUser`
         """
-        type_check(dbuser, DbUser)
+        type_check(dbmodel, DbUser)
         user = cls.__new__(cls)
         super(DjangoUser, user).__init__(backend)
-        user._dbuser = utils.ModelWrapper(dbuser)
+        user._dbuser = utils.ModelWrapper(dbmodel)
         return user
 
-    def __init__(self, backend, email):
+    def __init__(self, backend, email, first_name, last_name, institution):
         super(DjangoUser, self).__init__(backend)
-        self._dbuser = utils.ModelWrapper(DbUser(email=email))
+        self._dbuser = utils.ModelWrapper(DbUser(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            institution=institution))
 
     @property
     def dbuser(self):

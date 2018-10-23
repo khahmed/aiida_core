@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=too-many-arguments, wrong-import-position
 ###########################################################################
 # Copyright (c), The AiiDA team. All rights reserved.                     #
 # This file is part of the AiiDA code.                                    #
@@ -7,81 +8,19 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
-import click
+"""The `verdi` command line interface."""
+from __future__ import absolute_import
+import click_completion
 
-from aiida.cmdline.utils.pluginable import Pluginable
+# Activate the completion of parameter types provided by the click_completion package
+click_completion.init()
 
+# Import to populate the `verdi` sub commands
+from aiida.cmdline.commands import (cmd_calculation, cmd_code, cmd_comment, cmd_completioncommand, cmd_computer,
+                                    cmd_data, cmd_database, cmd_daemon, cmd_devel, cmd_export, cmd_graph, cmd_group,
+                                    cmd_import, cmd_node, cmd_process, cmd_profile, cmd_quicksetup, cmd_rehash,
+                                    cmd_restapi, cmd_run, cmd_setup, cmd_shell, cmd_user, cmd_work, cmd_workflow)
 
-def click_subcmd_complete(cmd_group):
-    """Create a subcommand completion function for a click command group."""
-    def complete(subargs_idx, subargs):
-        """List valid subcommands for a command group that start with the last subarg."""
-        if subargs_idx >= 1:
-            return None
-        incomplete = subargs[-1]
-        print '\n'.join(cmd_group.list_commands({'parameters': [incomplete]}))
-    return complete
-
-
-@click.group()
-@click.option('--profile', '-p')
-@click.pass_context
-def verdi(ctx, profile):
-    """
-    Toplevel command for click-implemented verdi commands.
-
-    Might eventually replace ``execute_from_cmdline``, however, there is no way to directly call this command from the commandline
-    currently. Instead, it is used for subcommand routing of commands written in click, see aiida/cmdline/commands/work.py for an
-    example. In short it exists, so the name by which the subcommand is called ('verdi something something') matches it's command
-    group hierarchy (group ``verdi``, subgroup ``something``, command ``something``).
-
-    """
-    ctx.obj = {'profile': profile}
-
-
-@verdi.command()
-@click.argument('completion_args', nargs=-1, type=click.UNPROCESSED)
-def completion(completion_args):
-    """
-    Completion command alias for click-implemented verdi commands.
-
-    Due to the roundabout process by which click-implemented verdi commands are called, pressing <Tab><Tab> on one of them tries to
-    call aiida.cmdline.commands.verdi with subcommand completion. Therefore in order to enable the same behaviour as on older commands,
-    such a subcommand with the same signature must exist and must run the same code with the same arguments.
-    """
-    from aiida.cmdline.verdilib import Completion
-    Completion().run(*completion_args)
-
-
-@verdi.group()
-def export():
-    pass
-
-
-@verdi.group()
-def work():
-    pass
-
-
-@verdi.group()
-def user():
-    pass
-
-@verdi.group()
-def node():
-    pass
-
-@verdi.group('data', entry_point_group='aiida.cmdline.data', cls=Pluginable)
-def data_cmd():
-    """Verdi data interface for plugin commands."""
-    pass
-
-
-@verdi.group('daemon')
-def daemon_cmd():
-    pass
-
-
-@verdi.group('code')
-def code_cmd():
-    pass
+# Import to populate the `verdi data` sub commands
+from aiida.cmdline.commands.cmd_data import (cmd_array, cmd_bands, cmd_cif, cmd_parameter, cmd_remote, cmd_structure,
+                                             cmd_trajectory, cmd_upf)

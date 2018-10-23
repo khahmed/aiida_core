@@ -8,7 +8,11 @@
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
 
+from __future__ import absolute_import
 from datetime import datetime
+
+import six
+
 import aiida.backends.sqlalchemy
 
 from sqlalchemy import and_, or_, not_
@@ -18,6 +22,7 @@ from sqlalchemy.sql.expression import cast, ColumnClause
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.elements import Cast, Label
 from sqlalchemy_utils.types.choice import Choice
+from sqlalchemy.sql.elements import Cast
 from sqlalchemy.sql.expression import FunctionElement
 from sqlalchemy.ext.compiler import compiles
 
@@ -250,7 +255,7 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
                     "You have to give an integer when comparing to a length"
                 )
         elif operator in ('like', 'ilike'):
-            if not isinstance(value, basestring):
+            if not isinstance(value, six.string_types):
                 raise InputValidationError(
                     "Value for operator {} has to be a string (you gave {})"
                     "".format(operator, value)
@@ -345,22 +350,22 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
         def cast_according_to_type(path_in_json, value):
             if isinstance(value, bool):
                 type_filter = jsonb_typeof(path_in_json) == 'boolean'
-                casted_entity = path_in_json.astext.cast(Boolean)
+                casted_entity = path_in_json.cast(Boolean)
             elif isinstance(value, (int, float)):
                 type_filter = jsonb_typeof(path_in_json) == 'number'
-                casted_entity = path_in_json.astext.cast(Float)
+                casted_entity = path_in_json.cast(Float)
             elif isinstance(value, dict) or value is None:
                 type_filter = jsonb_typeof(path_in_json) == 'object'
-                casted_entity = path_in_json.astext.cast(JSONB)  # BOOLEANS?
+                casted_entity = path_in_json.cast(JSONB)  # BOOLEANS?
             elif isinstance(value, dict):
                 type_filter = jsonb_typeof(path_in_json) == 'array'
-                casted_entity = path_in_json.astext.cast(JSONB)  # BOOLEANS?
-            elif isinstance(value, (str, unicode)):
+                casted_entity = path_in_json.cast(JSONB)  # BOOLEANS?
+            elif isinstance(value, six.string_types):
                 type_filter = jsonb_typeof(path_in_json) == 'string'
                 casted_entity = path_in_json.astext
             elif value is None:
                 type_filter = jsonb_typeof(path_in_json) == 'null'
-                casted_entity = path_in_json.astext.cast(JSONB)  # BOOLEANS?
+                casted_entity = path_in_json.cast(JSONB)  # BOOLEANS?
             elif isinstance(value, datetime):
                 # type filter here is filter whether this attributes stores
                 # a string and a filter whether this string
@@ -419,7 +424,7 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
         elif operator == 'contains':
             expr = database_entity.cast(JSONB).contains(value)
         elif operator == 'has_key':
-            expr = database_entity.cast(JSONB).has_key(value)
+            expr = database_entity.cast(JSONB).has_key(value)  # noqa
         elif operator == 'of_length':
             expr = and_(
                 jsonb_typeof(database_entity) == 'array',
@@ -453,17 +458,17 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
         if cast is None:
             entity = entity
         elif cast == 'f':
-            entity = entity.astext.cast(Float)
+            entity = entity.cast(Float)
         elif cast == 'i':
-            entity = entity.astext.cast(Integer)
+            entity = entity.cast(Integer)
         elif cast == 'b':
-            entity = entity.astext.cast(Boolean)
+            entity = entity.cast(Boolean)
         elif cast == 't':
             entity = entity.astext
         elif cast == 'j':
-            entity = entity.astext.cast(JSONB)
+            entity = entity.cast(JSONB)
         elif cast == 'd':
-            entity = entity.astext.cast(DateTime)
+            entity = entity.cast(DateTime)
         else:
             raise InputValidationError(
                 "Unkown casting key {}".format(cast)
@@ -554,6 +559,11 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
             raise
 
     def iterdict(self, query, batch_size, tag_to_projected_entity_dict):
+
+        nr_items = sum(len(v) for v in tag_to_projected_entity_dict.values())
+
+        if not nr_items:
+            raise Exception("Got an empty dictionary")
 
         # Wrapping everything in an atomic transaction:
         try:

@@ -7,7 +7,9 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+from __future__ import absolute_import
 from aiida.backends.sqlalchemy.models.user import DbUser
+from aiida.common.utils import type_check
 from aiida.orm.user import User, UserCollection
 from aiida.utils.email import normalize_email
 
@@ -15,18 +17,15 @@ from . import utils
 
 
 class SqlaUserCollection(UserCollection):
-    def create(self, email):
+
+    def create(self, email, first_name='', last_name='', institution=''):
         """
         Create a user with the provided email address
 
-        :param email: An email address for the user
         :return: A new user object
         :rtype: :class:`aiida.orm.User`
         """
-        return SqlaUser(self, normalize_email(email))
-
-    def _from_dbmodel(self, dbuser):
-        return SqlaUser._from_dbmodel(self, dbuser)
+        return SqlaUser(self.backend, normalize_email(email), first_name, last_name, institution)
 
     def find(self, email=None, id=None):
         # Constructing the default query
@@ -43,25 +42,30 @@ class SqlaUserCollection(UserCollection):
         dbusers = dbuser_query.all()
         users = []
         for dbuser in dbusers:
-            users.append(self._from_dbmodel(dbuser))
+            users.append(self.from_dbmodel(dbuser))
         return users
+
+    def from_dbmodel(self, dbmodel):
+        return SqlaUser.from_dbmodel(dbmodel, self.backend)
 
 
 class SqlaUser(User):
-    @classmethod
-    def _from_dbmodel(cls, backend, dbuser):
-        if not isinstance(dbuser, DbUser):
-            raise ValueError("Expected a DbUser. Object of a different"
-                             "class was given as argument.")
 
+    @classmethod
+    def from_dbmodel(cls, dbmodel, backend):
+        type_check(dbmodel, DbUser)
         user = cls.__new__(cls)
         super(SqlaUser, user).__init__(backend)
-        user._dbuser = utils.ModelWrapper(dbuser)
+        user._dbuser = utils.ModelWrapper(dbmodel)
         return user
 
-    def __init__(self, backend, email):
+    def __init__(self, backend, email, first_name, last_name, institution):
         super(SqlaUser, self).__init__(backend)
-        self._dbuser = utils.ModelWrapper(DbUser(email=email))
+        self._dbuser = utils.ModelWrapper(DbUser(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            institution=institution))
 
     @property
     def dbuser(self):

@@ -15,12 +15,12 @@ functionality from within python without knowing details about how postgres is
 installed by default on various systems. If the postgres setup is not the
 default installation, additional information needs to be provided.
 """
+from __future__ import absolute_import
 try:
     import subprocess32 as subprocess
 except ImportError:
     import subprocess
 
-import os
 import click
 
 _CREATE_USER_COMMAND = 'CREATE USER "{}" WITH PASSWORD \'{}\''
@@ -65,16 +65,19 @@ class Postgres(object):
             print('setup sucessful!')
     """
 
-    def __init__(self, port=None, interactive=False, quiet=True):
+    def __init__(self, host='localhost', port=None, interactive=False, quiet=True):
         self.interactive = interactive
         self.quiet = quiet
         self.pg_execute = _pg_execute_not_connected
         self.dbinfo = {}
-        if port:
-            self.set_port(port)
         self.setup_fail_callback = None
         self.setup_fail_counter = 0
         self.setup_max_tries = 1
+
+        if host:
+            self.set_host(host)
+        if port:
+            self.set_port(port)
 
     def set_setup_fail_callback(self, callback):
         """
@@ -83,6 +86,10 @@ class Postgres(object):
         :param callback: a callable with signature ``callback(interactive, dbinfo)``
         """
         self.setup_fail_callback = callback
+
+    def set_host(self, host):
+        """Set the host manually"""
+        self.dbinfo['host'] = host
 
     def set_port(self, port):
         """Set the port manually"""
@@ -270,12 +277,12 @@ def _try_subcmd(**kwargs):
 
 
 def _pg_execute_psyco(command, **kwargs):
-    '''
+    """
     executes a postgres commandline through psycopg2
 
     :param command: A psql command line as a str
     :param kwargs: will be forwarded to psycopg2.connect
-    '''
+    """
     from psycopg2 import connect, ProgrammingError
     conn = connect(**kwargs)
     conn.autocommit = True
@@ -314,7 +321,7 @@ def _pg_execute_sh(command, user='postgres', **kwargs):
     if port:
         options += '-p {}'.format(port)
 
-    ## build command line
+    # Build command line
     sudo_cmd = ['sudo']
     non_interactive = kwargs.pop('non_interactive', None)
     if non_interactive:
@@ -323,11 +330,11 @@ def _pg_execute_sh(command, user='postgres', **kwargs):
     from aiida.common.utils import escape_for_bash
     psql_cmd = ['psql {options} -tc {}'.format(escape_for_bash(command), options=options)]
     sudo_su_psql = sudo_cmd + su_cmd + psql_cmd
-    result = subprocess.check_output(sudo_su_psql, preexec_fn=os.setsid, **kwargs)
+    result = subprocess.check_output(sudo_su_psql, **kwargs)
 
-    if isinstance(result, str):
-        result = result.strip().split('\n')
-        result = [i for i in result if i]
+    result = result.decode('utf-8').strip().split('\n')
+    result = [i for i in result if i]
+
     return result
 
 
