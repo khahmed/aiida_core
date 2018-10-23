@@ -559,27 +559,55 @@ class TestAttributes(AiidaTestCase):
         from aiida.orm.node import Node
         from aiida.orm.querybuilder import QueryBuilder
         key = 'value_test_attr_type'
-        n_int, n_float, n_str, n_str2, n_bool = [Node() for _ in range(5)]
+        n_int, n_float, n_str, n_str2, n_bool, n_arr = [Node() for _ in range(6)]
         n_int._set_attr(key, 1)
         n_float._set_attr(key, 1.0)
         n_bool._set_attr(key, True)
         n_str._set_attr(key, '1')
         n_str2._set_attr(key, 'one')
-        [n.store() for n in (n_str2, n_str, n_int, n_float, n_bool)]
+        n_arr._set_attr(key, [4,3,5])
+        [n.store() for n in (n_str2, n_str, n_int, n_float, n_bool, n_arr)]
         # Here I am testing which values contain a number 1.
         # Both 1 and 1.0 are legitimate values if ask for either 1 or 1.0
         for val in (1.0, 1):
             qb = QueryBuilder().append(Node, 
                     filters={'attributes.{}'.format(key):val}, project='uuid')
-            print qb
-            res = [_ for _, in qb.all()]
+            res = [str(_) for _, in qb.all()]
+            self.assertEqual(set(res), set((n_float.uuid, n_int.uuid)))
+            qb = QueryBuilder().append(Node, 
+                    filters={'attributes.{}'.format(key):{'>':0.5}}, project='uuid')
+            res = [str(_) for _, in qb.all()]
+            self.assertEqual(set(res), set((n_float.uuid, n_int.uuid)))
+            qb = QueryBuilder().append(Node, 
+                    filters={'attributes.{}'.format(key):{'<':1.5}}, project='uuid')
+            res = [str(_) for _, in qb.all()]
+            self.assertEqual(set(res), set((n_float.uuid, n_int.uuid)))
         # Now I am testing the boolean value:
         qb = QueryBuilder().append(Node, 
                 filters={'attributes.{}'.format(key):True}, project='uuid')
-        print qb 
-        raw_input() 
-        res = [_ for _, in qb.all()]
+        res = [str(_) for _, in qb.all()]
         self.assertEqual(set(res), set((n_bool.uuid,))) # This fails for some resason
+
+        qb = QueryBuilder().append(Node, 
+                filters={'attributes.{}'.format(key):{'like':'%n%'}}, project='uuid')
+        res = [str(_) for _, in qb.all()]
+        self.assertEqual(set(res), set((n_str2.uuid,))) # This fails for some resason
+        qb = QueryBuilder().append(Node, 
+                filters={'attributes.{}'.format(key):{'ilike':'On%'}}, project='uuid')
+        res = [str(_) for _, in qb.all()]
+        self.assertEqual(set(res), set((n_str2.uuid,))) # This fails for some resason
+        qb = QueryBuilder().append(Node, 
+                filters={'attributes.{}'.format(key):{'like':'1'}}, project='uuid')
+        res = [str(_) for _, in qb.all()]
+        self.assertEqual(set(res), set((n_str.uuid,))) # This fails for some resason
+        qb = QueryBuilder().append(Node, 
+                filters={'attributes.{}'.format(key):{'==':'1'}}, project='uuid')
+        res = [str(_) for _, in qb.all()]
+        self.assertEqual(set(res), set((n_str.uuid,))) # This fails for some resason
+        qb = QueryBuilder().append(Node, 
+                filters={'attributes.{}'.format(key):{'of_length':3}}, project='uuid')
+        res = [str(_) for _, in qb.all()]
+        self.assertEqual(set(res), set((n_arr.uuid,))) # This fails for some resason
         
         
         
