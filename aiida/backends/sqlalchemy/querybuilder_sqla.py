@@ -18,7 +18,7 @@ import aiida.backends.sqlalchemy
 from sqlalchemy import and_, or_, not_
 from sqlalchemy.types import Integer, Float, Boolean, DateTime, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.sql.expression import cast, ColumnClause
+from sqlalchemy.sql.expression import cast, case, ColumnClause
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.elements import Cast, Label
 from sqlalchemy_utils.types.choice import Choice
@@ -389,19 +389,19 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
         database_entity = column[tuple(attr_key)]
         if operator == '==':
             type_filter, casted_entity = cast_according_to_type(database_entity, value)
-            expr = and_(type_filter, casted_entity == value)
+            expr = case([(type_filter, casted_entity == value)], else_=False)
         elif operator == '>':
             type_filter, casted_entity = cast_according_to_type(database_entity, value)
-            expr = and_(type_filter, casted_entity > value)
+            expr = case([(type_filter, casted_entity > value)], else_=False)
         elif operator == '<':
             type_filter, casted_entity = cast_according_to_type(database_entity, value)
-            expr = and_(type_filter, casted_entity < value)
+            expr = case([(type_filter, casted_entity < value)], else_=False)
         elif operator in ('>=', '=>'):
             type_filter, casted_entity = cast_according_to_type(database_entity, value)
-            expr = and_(type_filter, casted_entity >= value)
+            expr = case([(type_filter, casted_entity >= value)], else_=False)
         elif operator in ('<=', '=<'):
             type_filter, casted_entity = cast_according_to_type(database_entity, value)
-            expr = and_(type_filter, casted_entity <= value)
+            expr = case([(type_filter, casted_entity <= value)], else_=False)
         elif operator == 'of_type':
             # http://www.postgresql.org/docs/9.5/static/functions-json.html
             #  Possible types are object, array, string, number, boolean, and null.
@@ -414,32 +414,31 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
             expr = jsonb_typeof(database_entity) == value
         elif operator == 'like':
             type_filter, casted_entity = cast_according_to_type(database_entity, value)
-            expr = and_(type_filter, casted_entity.like(value))
+            expr = case([(type_filter, casted_entity.like(value))], else_=False)
         elif operator == 'ilike':
             type_filter, casted_entity = cast_according_to_type(database_entity, value)
-            expr = and_(type_filter, casted_entity.ilike(value))
+            expr = case([(type_filter, casted_entity.ilike(value))], else_=False)
         elif operator == 'in':
             type_filter, casted_entity = cast_according_to_type(database_entity, value[0])
-            expr = and_(type_filter, casted_entity.in_(value))
+            expr = case([(type_filter, casted_entity.in_(value))], else_=False)
         elif operator == 'contains':
             expr = database_entity.cast(JSONB).contains(value)
         elif operator == 'has_key':
             expr = database_entity.cast(JSONB).has_key(value)  # noqa
         elif operator == 'of_length':
-            expr = and_(
+            expr = case([(
                 jsonb_typeof(database_entity) == 'array',
-                jsonb_array_length(database_entity.cast(JSONB)) == value
-            )
+                jsonb_array_length(database_entity.cast(JSONB)) == value)], else_=False)
+
         elif operator == 'longer':
-            expr = and_(
+            expr = case([(
                 jsonb_typeof(database_entity) == 'array',
-                jsonb_array_length(database_entity.cast(JSONB)) > value
-            )
+                jsonb_array_length(database_entity.cast(JSONB)) > value)], else_=False)
+
         elif operator == 'shorter':
-            expr = and_(
+            expr = case([(
                 jsonb_typeof(database_entity) == 'array',
-                jsonb_array_length(database_entity.cast(JSONB)) < value
-            )
+                jsonb_array_length(database_entity.cast(JSONB)) < value)], else_=False)
         else:
             raise InputValidationError(
                 "Unknown operator {} for filters in JSON field".format(operator)
