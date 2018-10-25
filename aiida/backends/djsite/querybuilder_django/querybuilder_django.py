@@ -272,10 +272,9 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
             else:
                 if column is None:
                     if (alias is None) and (column_name is None):
-                        raise Exception(
+                        raise RuntimeError(
                             "I need to get the column but do not know \n"
-                            "the alias and the column name"
-                        )
+                            "the alias and the column name")
                     column = _get_column(column_name, alias)
                 expr = self.get_filter_expr_from_column(operator, value, column)
         if negation:
@@ -392,7 +391,7 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
             elif issubclass(mapped_class, dummy_model.DbExtra):
                 expr = alias.extras.any(mapped_class.key == '.'.join(attr_key + [value]))
             else:
-                raise Exception("I was given {} as an attribute base class".format(mapped_class))
+                raise TypeError("I was given {} as an attribute base class".format(mapped_class))
 
         else:
             types_n_casts = []
@@ -549,9 +548,8 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
 
     def iterall(self, query, batch_size, tag_to_index_dict):
         from django.db import transaction
-
         if not tag_to_index_dict:
-            raise Exception("Got an empty dictionary: {}".format(tag_to_index_dict))
+            raise ValueError("Got an empty dictionary: {}".format(tag_to_index_dict))
 
         with transaction.atomic():
             results = query.yield_per(batch_size)
@@ -580,7 +578,7 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
         nr_items = sum(len(v) for v in tag_to_projected_entity_dict.values())
 
         if not nr_items:
-            raise Exception("Got an empty dictionary")
+            raise ValueError("Got an empty dictionary")
 
         # Wrapping everything in an atomic transaction:
         with transaction.atomic():

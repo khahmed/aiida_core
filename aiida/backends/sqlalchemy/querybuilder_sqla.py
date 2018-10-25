@@ -299,10 +299,9 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
             else:
                 if column is None:
                     if (alias is None) and (column_name is None):
-                        raise Exception(
+                        raise RuntimeError(
                             "I need to get the column but do not know \n"
-                            "the alias and the column name"
-                        )
+                            "the alias and the column name")
                     column = _get_column(column_name, alias)
                 expr = self._get_filter_expr_from_column(operator, value, column)
         if negation:
@@ -382,7 +381,7 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
                 type_filter = and_(type_filter, regex_filter)
                 casted_entity = path_in_json.cast(DateTime)
             else:
-                raise Exception('Unknown type {}'.format(type(value)))
+                raise TypeError('Unknown type {}'.format(type(value)))
             return type_filter, casted_entity
 
         if column is None:
@@ -554,7 +553,7 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
                         in enumerate(resultrow)
                     ]
             else:
-                raise Exception("Got an empty dictionary")
+                raise ValueError("Got an empty dictionary")
         except Exception:
             self.get_session().rollback()
             raise
@@ -564,7 +563,7 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
         nr_items = sum(len(v) for v in tag_to_projected_entity_dict.values())
 
         if not nr_items:
-            raise Exception("Got an empty dictionary")
+            raise ValueError("Got an empty dictionary")
 
         # Wrapping everything in an atomic transaction:
         try:
@@ -605,7 +604,7 @@ class QueryBuilderImplSQLA(QueryBuilderInterface):
                             for tag, projected_entities_dict in tag_to_projected_entity_dict.items()
                         }
             else:
-                raise Exception("Got an empty dictionary")
+                raise ValueError("Got an empty dictionary")
         except Exception as e:
             self.get_session().rollback()
             raise e
