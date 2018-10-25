@@ -587,28 +587,33 @@ class TestAttributes(AiidaTestCase):
         qb = QueryBuilder().append(Node, 
                 filters={'attributes.{}'.format(key):True}, project='uuid')
         res = [str(_) for _, in qb.all()]
-        self.assertEqual(set(res), set((n_bool.uuid,))) # This fails for some resason
+        self.assertEqual(set(res), set((n_bool.uuid,)))
 
         qb = QueryBuilder().append(Node, 
                 filters={'attributes.{}'.format(key):{'like':'%n%'}}, project='uuid')
         res = [str(_) for _, in qb.all()]
-        self.assertEqual(set(res), set((n_str2.uuid,))) # This fails for some resason
+        self.assertEqual(set(res), set((n_str2.uuid,)))
         qb = QueryBuilder().append(Node, 
                 filters={'attributes.{}'.format(key):{'ilike':'On%'}}, project='uuid')
         res = [str(_) for _, in qb.all()]
-        self.assertEqual(set(res), set((n_str2.uuid,))) # This fails for some resason
+        self.assertEqual(set(res), set((n_str2.uuid,)))
         qb = QueryBuilder().append(Node, 
                 filters={'attributes.{}'.format(key):{'like':'1'}}, project='uuid')
         res = [str(_) for _, in qb.all()]
-        self.assertEqual(set(res), set((n_str.uuid,))) # This fails for some resason
+        self.assertEqual(set(res), set((n_str.uuid,)))
         qb = QueryBuilder().append(Node, 
                 filters={'attributes.{}'.format(key):{'==':'1'}}, project='uuid')
         res = [str(_) for _, in qb.all()]
-        self.assertEqual(set(res), set((n_str.uuid,))) # This fails for some resason
-        qb = QueryBuilder().append(Node, 
-                filters={'attributes.{}'.format(key):{'of_length':3}}, project='uuid')
-        res = [str(_) for _, in qb.all()]
-        self.assertEqual(set(res), set((n_arr.uuid,))) # This fails for some resason
+        self.assertEqual(set(res), set((n_str.uuid,)))
+        if settings.BACKEND == u'sqlalchemy':
+            # I can't query the length of an array with Django,
+            # so I exclude. Not the nicest way, But I would like to keep this piece
+            # of code because of the initialization part, that would need to be
+            # duplicated or wrapped otherwise.
+            qb = QueryBuilder().append(Node,
+                    filters={'attributes.{}'.format(key):{'of_length':3}}, project='uuid')
+            res = [str(_) for _, in qb.all()]
+            self.assertEqual(set(res), set((n_arr.uuid,)))
         
         
         

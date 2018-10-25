@@ -312,17 +312,22 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
         def get_attribute_db_column(mapped_class, dtype, castas=None):
             if dtype == 't':
                 mapped_entity = mapped_class.tval
+                additional_type_constraint = None
             elif dtype == 'b':
                 mapped_entity = mapped_class.bval
-                # ~ mapped_entity = cast(mapped_class.value_str, Boolean)
+                additional_type_constraint = None
             elif dtype == 'f':
                 mapped_entity = mapped_class.fval
-                # ~ mapped_entity = cast(mapped_class.value_str, Float)
+                additional_type_constraint = None
             elif dtype == 'i':
                 mapped_entity = mapped_class.ival
-                # ~ mapped_entity = cast(mapped_class.value_str, Integer)
+                # IN the schema, we also have dicts and lists storing something in the
+                # ival column, namely the length. I need to check explicitly whether
+                # this is meant to be an integer!
+                additional_type_constraint = mapped_class.datatype == 'int'
             elif dtype == 'd':
                 mapped_entity = mapped_class.dval
+                additional_type_constraint = None
             else:
                 raise InputValidationError(
                     "I don't know what to do with dtype {}".format(dtype)
@@ -332,7 +337,7 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
             elif castas == 'f':
                 mapped_entity = cast(mapped_entity, Float)
 
-            return mapped_entity
+            return mapped_entity, additional_type_constraint
 
         if column:
             mapped_class = column.prop.mapper.class_
@@ -403,16 +408,17 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
 
             expressions = []
             for dtype, castas in types_n_casts:
-                try:
-                    expressions.append(
-                        self.get_filter_expr(
+                attr_column, additional_type_constraint = get_attribute_db_column(
+                                mapped_class, dtype, castas=castas)
+                expression_this_typ_cas = self.get_filter_expr(
                             operator, value, attr_key=[],
-                            column=get_attribute_db_column(mapped_class, dtype, castas=castas),
+                            column=attr_column,
                             is_attribute=False
                         )
-                    )
-                except InputValidationError as e:
-                    raise e
+                if additional_type_constraint is not None:
+                    expression_this_typ_cas = and_(
+                        expression_this_typ_cas, additional_type_constraint)
+                expressions.append(expression_this_typ_cas)
 
             actual_attr_key = '.'.join(attr_key)
             expr = column.any(and_(
