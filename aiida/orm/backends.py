@@ -12,7 +12,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
 
-__all__ = ['construct_backend', 'CollectionEntry']
+__all__ = 'construct_backend', 'CollectionEntry'
 
 _DJANGO_BACKEND = None
 _SQLA_BACKEND = None

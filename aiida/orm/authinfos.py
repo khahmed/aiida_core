@@ -7,147 +7,125 @@
 # For further information on the license, see the LICENSE.txt file        #
 # For further information please visit http://www.aiida.net               #
 ###########################################################################
+"""Authinfo objects and functions"""
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
-import abc
-import six
 
 from aiida.transport import TransportFactory
 from aiida.common.exceptions import (ConfigurationError, MissingPluginError)
-from .backends import CollectionEntry
-from aiida.orm.entities import Collection
+from .backends import construct_backend
+from . import computers
+from . import entities
+from . import users
 
-__all__ = ['AuthInfo', 'AuthInfoCollection']
-
-
-@six.add_metaclass(abc.ABCMeta)
-class AuthInfoCollection(Collection):
-    """The collection of AuthInfo entries."""
-
-    @abc.abstractmethod
-    def create(self, computer, user):
-        """
-        Create a AuthInfo given a computer and a user
-
-        :param computer: a Computer instance
-        :param user: a User instance
-        :return: a AuthInfo object associated to the given computer and user
-        """
-        pass
-
-    @abc.abstractmethod
-    def remove(self, authinfo_id):
-        """
-        Remove an AuthInfo from the collection with the given id
-        :param authinfo_id: The ID of the authinfo to delete
-        """
-        pass
-
-    @abc.abstractmethod
-    def get(self, computer, user):
-        """
-        Return a AuthInfo given a computer and a user
-
-        :param computer: a Computer instance
-        :param user: a User instance
-        :return: a AuthInfo object associated to the given computer and user
-        :raise NotExistent: if the user is not configured to use computer
-        :raise sqlalchemy.orm.exc.MultipleResultsFound: if the user is configured
-            more than once to use the computer! Should never happen
-        """
-        pass
+__all__ = ('AuthInfo',)
 
 
-@six.add_metaclass(abc.ABCMeta)
-class AuthInfo(CollectionEntry):
+class AuthInfo(entities.Entity):
     """
     Base class to map a DbAuthInfo, that contains computer configuration
     specific to a given user (authorization info and other metadata, like
     how often to check on a given computer etc.)
     """
 
-    def pk(self):
-        """
-        Return the principal key in the DB.
-        """
-        return self.id
+    class Collection(entities.Entity.Collection):
+        """The collection of AuthInfo entries."""
 
-    @abc.abstractproperty
-    def id(self):
-        """
-        Return the ID in the DB.
-        """
-        pass
+        def find(self, computer, user):
+            """
+            Get an authinfo for a given computer and user combination
 
-    @abc.abstractproperty
+            :param computer: the computer to get the authinfo for
+            :type computer: :class:`aiida.orm.Computer`
+            :param user: the user to ge the authinfo for
+            :type user: :class:`aiida.orm.User`
+            :rtype: :class:`aiida.orm.AuthInfo`
+            """
+            return [
+                AuthInfo.from_backend_entity(self._backend.authinfos.get(computer.backend_entity, user.backend_entity))
+            ]
+
+        def remove(self, authinfo_id):
+            """
+            Remove an AuthInfo from the collection with the given id
+            :param authinfo_id: The ID of the authinfo to delete
+            """
+            self._backend.authinfos.remove(authinfo_id)
+
+    def __init__(self, computer, user, backend=None):
+        """
+        Create a AuthInfo given a computer and a user
+
+        :param computer: a Computer instance
+        :param user: a User instance
+        :return: an AuthInfo object associated with the given computer and user
+        """
+        backend = backend or construct_backend()
+        model = backend.authinfos.create(computer=computer.backend_entity, user=user.backend_entity)
+        super(AuthInfo, self).__init__(model)
+
+    @property
     def enabled(self):
         """
         Is the computer enabled for this user?
 
-        :return: Boolean
+        :rtype: bool
         """
-        pass
+        return self._backend_entity.enabled
 
     @enabled.setter
-    def enabled(self, value):
+    def enabled(self, enabled):
         """
         Set the enabled state for the computer
-
-        :return: Boolean
         """
-        pass
+        self._backend_entity.enabled = enabled
 
-    @abc.abstractproperty
+    @property
     def computer(self):
-        pass
+        return computers.Computer.from_backend_entity(self._backend_entity.computer)
 
-    @abc.abstractproperty
+    @property
     def user(self):
-        pass
+        return users.User.from_backend_entity(self._backend_entity.user)
 
-    @abc.abstractproperty
     def is_stored(self):
         """
         Is it already stored or not?
 
         :return: Boolean
         """
-        pass
+        return self._backend_entity.is_stored()
 
-    @abc.abstractmethod
     def get_auth_params(self):
         """
         Get the dictionary of auth_params
 
         :return: a dictionary
         """
-        pass
+        return self._backend_entity.get_auth_params()
 
-    @abc.abstractmethod
     def set_auth_params(self, auth_params):
         """
         Set the dictionary of auth_params
 
         :param auth_params: a dictionary with the new auth_params
         """
-        pass
+        self._backend_entity.set_auth_params(auth_params)
 
-    @abc.abstractmethod
     def get_metadata(self):
         """
         Get the metadata dictionary
 
         :return: a dictionary
         """
-        pass
+        return self._backend_entity.get_metadata()
 
-    @abc.abstractmethod
     def set_metadata(self, metadata):
         """
         Replace the metadata dictionary in the DB with the provided dictionary
         """
-        pass
+        self._backend_entity.set_metadata(metadata)
 
     def get_workdir(self):
         """
@@ -165,8 +143,8 @@ class AuthInfo(CollectionEntry):
     def __str__(self):
         if self.enabled:
             return "AuthInfo for {} on {}".format(self.user.email, self.computer.name)
-        else:
-            return "AuthInfo for {} on {} [DISABLED]".format(self.user.email, self.computer.name)
+
+        return "AuthInfo for {} on {} [DISABLED]".format(self.user.email, self.computer.name)
 
     def get_transport(self):
         """
@@ -174,10 +152,10 @@ class AuthInfo(CollectionEntry):
         """
         computer = self.computer
         try:
-            ThisTransport = TransportFactory(computer.get_transport_type())
+            this_transport_class = TransportFactory(computer.get_transport_type())
         except MissingPluginError as exc:
             raise ConfigurationError('No transport found for {} [type {}], message: {}'.format(
                 computer.hostname, computer.get_transport_type(), exc))
 
         params = dict(list(computer.get_transport_params().items()) + list(self.get_auth_params().items()))
-        return ThisTransport(machine=computer.hostname, **params)
+        return this_transport_class(machine=computer.hostname, **params)

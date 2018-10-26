@@ -20,7 +20,7 @@ from aiida.backends.testbase import AiidaTestCase
 from aiida.common.links import LinkType
 from aiida.orm import DataFactory
 from aiida.orm.calculation import Calculation
-from aiida.orm.computer import Computer
+from aiida.orm.computers import Computer
 from aiida.orm.data import Data
 from aiida.orm.querybuilder import QueryBuilder
 from aiida.restapi.api import App, AiidaApi
@@ -93,7 +93,7 @@ class RESTApiTestCase(AiidaTestCase):
         calc1 = Calculation()
         calc1.store()
 
-        from aiida.orm.computer import Computer
+        from aiida.orm.computers import Computer
 
         dummy_computers = [
             {

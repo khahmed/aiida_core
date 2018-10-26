@@ -18,8 +18,8 @@ from aiida.common.exceptions import InputValidationError
 from aiida.common.utils import abstractclassmethod
 from aiida.plugins.factory import BaseFactory
 
-__all__ = ['CalculationFactory', 'DataFactory', 'WorkflowFactory', 'load_group', 
-           'load_node', 'load_workflow', 'BackendDelegateWithDefault']
+__all__ = 'CalculationFactory', 'DataFactory', 'WorkflowFactory', 'load_group', 'load_node', 'load_workflow', \
+          'BackendDelegateWithDefault'
 
 
 def CalculationFactory(entry_point):
