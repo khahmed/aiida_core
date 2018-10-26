@@ -25,7 +25,7 @@ from aiida.backends.djsite.db.models import DbAttribute, DbExtra, ObjectDoesNotE
 from sqlalchemy import and_, or_, not_, exists, select, exists, case
 from sqlalchemy.types import Float, String
 from sqlalchemy.orm import aliased
-from sqlalchemy.orm.attributes import InstrumentedAttribute
+from sqlalchemy.orm.attributes import InstrumentedAttribute, QueryableAttribute
 
 from sqlalchemy.sql.expression import cast, ColumnClause
 from sqlalchemy.sql.elements import Cast, Label
@@ -41,22 +41,6 @@ from aiida.common.exceptions import (
 class QueryBuilderImplDjango(QueryBuilderInterface):
 
     def __init__(self, *args, **kwargs):
-        # ~ from aiida.orm.implementation.django.node import Node as AiidaNode
-        # ~ from aiida.orm.implementation.django.group import Group as AiidaGroup
-        # ~ from aiida.orm.implementation.django.computer import Computer as AiidaComputer
-        # ~ from aiida.orm.implementation.django.user import User as AiidaUser
-
-        # ~ self.Link               = dummy_model.DbLink
-        # ~ self.Node               = dummy_model.DbNode
-        # ~ self.Computer           = dummy_model.DbComputer
-        # ~ self.User               = dummy_model.DbUser
-        # ~ self.Group              = dummy_model.DbGroup
-        # ~ self.table_groups_nodes = dummy_model.table_groups_nodes
-        # ~ self.AiidaNode          = AiidaNode
-        # ~ self.AiidaGroup         = AiidaGroup
-        # ~ self.AiidaComputer      = AiidaComputer
-        # ~ self.AiidaUser          = AiidaUser
-
         super(QueryBuilderImplDjango, self).__init__(*args, **kwargs)
 
     @property
@@ -107,7 +91,7 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
 
         # Label is used because it is what is returned for the
         # 'state' column by the hybrid_column construct
-        if not isinstance(column, (Cast, InstrumentedAttribute, Label, ColumnClause)):
+        if not isinstance(column, (Cast, InstrumentedAttribute, QueryableAttribute, Label, ColumnClause)):
             raise TypeError(
                 'column ({}) {} is not a valid column'.format(
                     type(column), column
@@ -136,10 +120,8 @@ class QueryBuilderImplDjango(QueryBuilderInterface):
             )
         return expr
 
-    def get_filter_expr(
-            self, operator, value, attr_key, is_attribute,
-            alias=None, column=None, column_name=None
-    ):
+    def get_filter_expr(self, operator, value, attr_key, is_attribute,
+            alias=None, column=None, column_name=None):
         """
         Applies a filter on the alias given.
         Expects the alias of the ORM-class on which to filter, and filter_spec.
