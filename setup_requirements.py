@@ -49,6 +49,7 @@ install_requires = [
     'kiwipy==0.2.1',
     'circus==0.14.0',
     'tornado==4.5.3',  # As of 2018/03/06 Tornado released v5.0 which breaks circus 0.14.0
+    'pyblake2==1.1.2; python_version<"3.6"',
     'chainmap; python_version<"3.5"',
     'pathlib2; python_version<"3.5"',
     'singledispatch>=3.4.0.3; python_version<"3.5"',
@@ -93,7 +94,8 @@ extras_require = {
         'pymatgen==2018.4.20',
         'ase==3.12.0',  # Updating breaks tests
         'PyMySQL==0.8.0',  # Required by ICSD tools
-        'PyCifRW==4.2.1',  # Updating breaks tests
+        "PyCifRW==4.2.1; python_version < '3'", # Does not support python3
+        "PyCifRW==4.4; python_version >= '3'", # Does not support python2
         'seekpath==1.8.1',
         'qe-tools==1.1.0',
     ],
@@ -103,10 +105,12 @@ extras_require = {
     ],
     # Requirements for testing
     'testing': [
+        'unittest2==1.1.0; python_version<"3.5"',
         'pgtest==1.1.0',
         'sqlalchemy-diff==0.1.3',
         'coverage==4.5.1',
-        'codecov==2.0.15'
+        'codecov==2.0.15',
+        'futures; python_version=="2.7"',
     ],
     'dev_precommit': [
         'pre-commit==1.8.2',
