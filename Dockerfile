@@ -81,13 +81,13 @@ RUN updatedb
 RUN pip install pip==10.0.1 setuptools==39.0.1
 
 # Put the doubler script
-COPY doubler.sh /usr/local/bin/
+COPY .ci/doubler.sh /usr/local/bin/
 
 # Use messed-up filename to test quoting robustness
 RUN mv /usr/local/bin/doubler.sh /usr/local/bin/d\"o\'ub\ ler.sh
 
 # Put the add script
-COPY add.sh /usr/local/bin/
+COPY .ci/add.sh /usr/local/bin/
 
 # add USER (no password); 1000 is the uid of the user in the jenkins docker
 RUN groupadd -g ${gid} jenkins && useradd -m -s /bin/bash -u ${uid} -g ${gid} jenkins
